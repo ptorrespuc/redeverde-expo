@@ -6,6 +6,9 @@ const config: ExpoConfig = {
   name: "Rede Verde",
   slug: "redeverde",
   version: "1.0.0",
+  runtimeVersion: {
+    policy: "fingerprint",
+  },
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "redeverde",
@@ -42,6 +45,11 @@ const config: ExpoConfig = {
   web: {
     output: "server",
     favicon: "./assets/images/favicon.png",
+  },
+  updates: {
+    url: "https://u.expo.dev/c8318146-479a-4743-826a-474ccca51456",
+    checkAutomatically: "ON_LOAD",
+    fallbackToCacheTimeout: 0,
   },
   extra: {
     googleMapsApiKey,

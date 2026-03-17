@@ -1,50 +1,52 @@
-# Welcome to your Expo app 👋
+# Rede Verde Expo
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplicacao Expo Router para web e Android, integrada ao mesmo Supabase do sistema atual.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Comandos principais
 
 ```bash
-npm run reset-project
+npm install
+npm run lint
+npm run typecheck
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Web
 
-## Learn more
+```bash
+npm run web
+npm run export:web
+npm run deploy:web
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Android
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm run build:android:preview
+```
 
-## Join the community
+Esse perfil gera um APK interno no EAS Build.
 
-Join our community of developers creating universal apps.
+## OTA
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+O projeto esta configurado com `EAS Update` e canais separados:
+
+- `preview`
+- `production`
+
+Para publicar uma atualizacao OTA no canal de testes:
+
+```bash
+npm run update:preview
+```
+
+Para publicar uma atualizacao OTA em producao:
+
+```bash
+npm run update:production
+```
+
+Observacoes:
+
+- alteracoes de JavaScript, telas e estilos podem ir por OTA quando o runtime nativo for compativel;
+- alteracoes nativas exigem novo build do app;
+- o `runtimeVersion` usa `fingerprint`, entao o Expo bloqueia OTA incompatível com a base nativa instalada.
