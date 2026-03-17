@@ -342,7 +342,7 @@ export function MapScreen() {
               ) : null}
               <View style={styles.groupHeaderCopy}>
                 <Text style={styles.title}>
-                  {currentGroupSummary?.name ?? "Todos os GRUPOS visíveis"}
+                  {currentGroupSummary?.name ?? "Todos os grupos visíveis"}
                 </Text>
                 <Text style={styles.subtitle}>
                   {currentGroupSummary
@@ -385,7 +385,7 @@ export function MapScreen() {
                     void saveGroupSelection(value);
                   }}
                 >
-                  <Picker.Item label="Todos os GRUPOS visíveis" value="all" />
+                  <Picker.Item label="Todos os grupos visíveis" value="all" />
                   {visibleGroups.map((group) => (
                     <Picker.Item
                       key={group.id}
