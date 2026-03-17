@@ -34,7 +34,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<{ pointId: string; marker: google.maps.Marker }[]>([]);
   const lastRegionRef = useRef<MapRegion | null>(null);
+  const initialRegionRef = useRef(region);
+  const onLongPressRef = useRef(onLongPress);
+  const onRegionChangeCompleteRef = useRef(onRegionChangeComplete);
   const [mapError, setMapError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onLongPressRef.current = onLongPress;
+    onRegionChangeCompleteRef.current = onRegionChangeComplete;
+  }, [onLongPress, onRegionChangeComplete]);
 
   useImperativeHandle(ref, () => ({
     animateToRegion(nextRegion: MapRegion) {
@@ -55,14 +63,17 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     async function initialize() {
       try {
         const { Map } = await loadGoogleMapsLibraries();
+        const initialRegion = initialRegionRef.current;
 
         if (disposed || !containerRef.current || mapRef.current) {
           return;
         }
 
+        setMapError(null);
+        lastRegionRef.current = initialRegion;
         mapRef.current = new Map(containerRef.current, {
-          center: { lat: region.latitude, lng: region.longitude },
-          zoom: deltaToZoom(region.latitudeDelta),
+          center: { lat: initialRegion.latitude, lng: initialRegion.longitude },
+          zoom: deltaToZoom(initialRegion.latitudeDelta),
           clickableIcons: false,
           fullscreenControl: true,
           mapTypeControl: false,
@@ -77,7 +88,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           }
 
           const center = map.getCenter();
-          const zoom = map.getZoom() ?? deltaToZoom(region.latitudeDelta);
+          const zoom = map.getZoom() ?? deltaToZoom(initialRegion.latitudeDelta);
 
           if (!center) {
             return;
@@ -91,7 +102,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
           };
 
           lastRegionRef.current = nextRegion;
-          onRegionChangeComplete?.(nextRegion);
+          onRegionChangeCompleteRef.current?.(nextRegion);
         });
 
         mapRef.current.addListener("rightclick", (event: google.maps.MapMouseEvent) => {
@@ -99,7 +110,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             return;
           }
 
-          onLongPress?.({
+          onLongPressRef.current?.({
             latitude: Number(event.latLng.lat().toFixed(6)),
             longitude: Number(event.latLng.lng().toFixed(6)),
           });
@@ -121,7 +132,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       markersRef.current = [];
       mapRef.current = null;
     };
-  }, [onLongPress, onRegionChangeComplete, region.latitude, region.latitudeDelta, region.longitude]);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
