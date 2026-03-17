@@ -1,16 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Updates from "expo-updates";
 
 import { Badge } from "@/src/components/ui/badge";
+import { Button } from "@/src/components/ui/button";
 import { colors, spacing } from "@/src/theme";
+
+const CHECK_INTERVAL_MS = 60_000;
+const MIN_CHECK_GAP_MS = 20_000;
 
 export function UpdateReadyBanner() {
   const insets = useSafeAreaInsets();
-  const { downloadedUpdate, isRestarting, isUpdatePending } = Updates.useUpdates();
+  const { downloadedUpdate, isDownloading, isRestarting, isUpdatePending } = Updates.useUpdates();
   const [dismissedUpdateKey, setDismissedUpdateKey] = useState<string | null>(null);
   const [isReloading, setIsReloading] = useState(false);
+  const checkInFlightRef = useRef(false);
+  const lastCheckAtRef = useRef(0);
 
   const pendingUpdateKey = useMemo(() => {
     if (!downloadedUpdate) {
@@ -23,6 +29,56 @@ export function UpdateReadyBanner() {
 
     return downloadedUpdate.type;
   }, [downloadedUpdate]);
+
+  const checkForPendingUpdate = useCallback(async (force = false) => {
+    if (Platform.OS === "web" || !Updates.isEnabled || checkInFlightRef.current) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (!force && now - lastCheckAtRef.current < MIN_CHECK_GAP_MS) {
+      return;
+    }
+
+    checkInFlightRef.current = true;
+    lastCheckAtRef.current = now;
+
+    try {
+      const result = await Updates.checkForUpdateAsync();
+
+      if (result.isAvailable) {
+        await Updates.fetchUpdateAsync();
+      }
+    } catch {
+      // Falha de rede/servidor de update nao deve interromper a aplicacao.
+    } finally {
+      checkInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === "web" || !Updates.isEnabled) {
+      return;
+    }
+
+    void checkForPendingUpdate(true);
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void checkForPendingUpdate();
+      }
+    });
+
+    const interval = setInterval(() => {
+      void checkForPendingUpdate();
+    }, CHECK_INTERVAL_MS);
+
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, [checkForPendingUpdate]);
 
   useEffect(() => {
     if (!pendingUpdateKey) {
@@ -40,66 +96,58 @@ export function UpdateReadyBanner() {
     try {
       setIsReloading(true);
       await Updates.reloadAsync();
-    } catch (error) {
+    } catch {
       setIsReloading(false);
-      Alert.alert(
-        "Nao foi possivel reiniciar agora",
-        error instanceof Error ? error.message : "Tente novamente em alguns instantes.",
-      );
     }
   }
 
-  function handlePress() {
-    if (!pendingUpdateKey) {
-      return;
-    }
-
-    Alert.alert(
-      "Atualizacao recebida",
-      "Uma versao nova ja foi baixada. Voce pode reiniciar agora para abrir o app atualizado ou continuar e reiniciar depois.",
-      [
-        {
-          text: "Depois",
-          style: "cancel",
-          onPress: () => {
-            setDismissedUpdateKey(pendingUpdateKey);
-          },
-        },
-        {
-          text: isReloading ? "Reiniciando..." : "Reiniciar agora",
-          onPress: () => {
-            void handleReloadNow();
-          },
-        },
-      ],
-    );
-  }
-
-  if (!isUpdatePending || !pendingUpdateKey || dismissedUpdateKey === pendingUpdateKey || isRestarting) {
+  if (
+    !isUpdatePending ||
+    !pendingUpdateKey ||
+    dismissedUpdateKey === pendingUpdateKey ||
+    isRestarting
+  ) {
     return null;
   }
 
   return (
     <View pointerEvents="box-none" style={styles.overlay}>
-      <Pressable
-        accessibilityRole="button"
-        onPress={handlePress}
-        style={({ pressed }) => [
+      <View
+        style={[
           styles.banner,
           {
             paddingTop: insets.top + spacing.sm,
           },
-          pressed ? styles.bannerPressed : null,
         ]}
       >
         <View style={styles.badgeRow}>
           <Badge tone="warning">Atualizacao</Badge>
+          {isDownloading ? <Badge>Baixando</Badge> : null}
         </View>
         <Text style={styles.title}>Atualizacao recebida</Text>
         <Text style={styles.description}>
-          Toque aqui para decidir se deseja reiniciar agora e abrir o app atualizado ou depois.
+          Uma nova versao foi baixada. Voce pode atualizar agora ou continuar e reiniciar depois.
         </Text>
-      </Pressable>
+        <View style={styles.actionsRow}>
+          <Button
+            compact
+            disabled={isReloading}
+            label={isReloading ? "Atualizando..." : "Atualizar"}
+            onPress={() => {
+              void handleReloadNow();
+            }}
+          />
+          <Button
+            compact
+            disabled={isReloading}
+            label="Depois"
+            onPress={() => {
+              setDismissedUpdateKey(pendingUpdateKey);
+            }}
+            variant="ghost"
+          />
+        </View>
+      </View>
     </View>
   );
 }
@@ -124,11 +172,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 12,
   },
-  bannerPressed: {
-    opacity: 0.92,
-  },
   badgeRow: {
-    alignItems: "flex-start",
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
   },
   title: {
     color: "#6a520e",
@@ -139,5 +187,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     lineHeight: 18,
+  },
+  actionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
 });
