@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 
+import { UpdateReadyBanner } from "@/src/components/updates/update-ready-banner";
 import { AppProvider } from "@/src/providers/app-provider";
 
 export const unstable_settings = {
@@ -36,6 +37,7 @@ export default function RootLayout() {
             <Stack.Screen name="points/[id]" options={{ title: "Detalhe do ponto" }} />
             <Stack.Screen name="points/[id]/edit" options={{ title: "Editar ponto" }} />
           </Stack>
+          <UpdateReadyBanner />
           <StatusBar style="dark" />
           <Toast />
         </AppProvider>
