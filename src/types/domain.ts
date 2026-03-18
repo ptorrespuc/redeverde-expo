@@ -227,6 +227,24 @@ export interface UserContext {
   has_point_workspace: boolean;
 }
 
+export interface AdminPermissions {
+  canCreateGroups: boolean;
+  canEditUserIdentity: boolean;
+  canInviteUsers: boolean;
+  canManageGlobalCatalogs: boolean;
+  manageableGroupIds: string[];
+}
+
+export interface AdminBootstrapResponse {
+  permissions: AdminPermissions;
+  groups: GroupRecord[];
+  users: AdminUserRecord[];
+  classifications: PointClassificationRecord[];
+  pointTags: PointTagRecord[];
+  eventTypes: PointEventTypeRecord[];
+  speciesCatalog: SpeciesRecord[];
+}
+
 export interface CreatePointPayload {
   groupId: string;
   classificationId: string;

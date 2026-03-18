@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 
@@ -90,11 +90,17 @@ export function AccountScreen() {
             variant="ghost"
           />
           {userContext.has_group_admin ? (
-            <Button
-              label="Admin no web"
-              onPress={() => router.push("/login")}
-              variant="ghost"
-            />
+            Platform.OS === "web" ? (
+              <Button
+                label="Abrir administracao"
+                onPress={() => router.push("/admin")}
+                variant="ghost"
+              />
+            ) : (
+              <Text style={styles.webOnlyHint}>
+                A administracao completa esta disponivel na versao web.
+              </Text>
+            )
           ) : null}
           <Button
             label="Sair"
@@ -159,5 +165,10 @@ const styles = StyleSheet.create({
   },
   actionStack: {
     gap: spacing.sm,
+  },
+  webOnlyHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

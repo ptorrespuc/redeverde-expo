@@ -1,12 +1,17 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAppContext } from "@/src/providers/app-provider";
 import { colors, spacing } from "@/src/theme";
 
 export default function TabLayout() {
+  const { userContext } = useAppContext();
   const insets = useSafeAreaInsets();
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.sm);
+  const showAdminTab =
+    Platform.OS === "web" && Boolean(userContext?.is_super_admin || userContext?.has_group_admin);
 
   return (
     <Tabs
@@ -50,6 +55,19 @@ export default function TabLayout() {
           ),
         }}
       />
+      {showAdminTab ? (
+        <Tabs.Screen
+          name="admin"
+          options={{
+            title: "Admin",
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons color={color} name="cog-outline" size={size} />
+            ),
+          }}
+        />
+      ) : (
+        <Tabs.Screen name="admin" options={{ href: null }} />
+      )}
     </Tabs>
   );
 }
