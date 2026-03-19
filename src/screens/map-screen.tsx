@@ -547,6 +547,14 @@ export function MapScreen() {
     }
   }
 
+  function clearMapFilters() {
+    setSelectedClassificationIds(availableClassificationIds);
+    setSelectedSpeciesIds(availableSpecies.map((species) => species.id));
+    setSelectedTagIds(availableTags.map((tag) => tag.id));
+    setPendingOnly(false);
+    setAddressQuery("");
+  }
+
   if (!isReady) {
     return <LoadingView label="Carregando mapa..." />;
   }
@@ -850,6 +858,7 @@ export function MapScreen() {
           ) : null}
 
           <View style={styles.filterFooter}>
+            <Button compact label="Limpar filtros" onPress={clearMapFilters} variant="ghost" />
             <Button compact label="Fechar" onPress={() => setIsFiltersOpen(false)} />
           </View>
         </ScrollView>
