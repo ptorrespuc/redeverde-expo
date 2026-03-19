@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Location from "expo-location";
 import Toast from "react-native-toast-message";
 
+import { GroupAvatar } from "@/src/components/groups/group-avatar";
 import { MapCanvas } from "@/src/components/map/map-canvas";
 import type { MapCanvasHandle, MapRegion } from "@/src/components/map/map-canvas.types";
-import { GroupAvatar } from "@/src/components/groups/group-avatar";
 import { PointActionModal } from "@/src/components/points/point-action-modal";
 import { PointFormModal } from "@/src/components/points/point-form-modal";
 import { PointSummaryCard } from "@/src/components/points/point-summary-card";
@@ -17,15 +17,16 @@ import { Card } from "@/src/components/ui/card";
 import { EmptyState } from "@/src/components/ui/empty-state";
 import { Field, FieldInput, FieldLabel, FieldSwitch } from "@/src/components/ui/field";
 import { LoadingView } from "@/src/components/ui/loading-view";
+import { ModalSheet } from "@/src/components/ui/modal-sheet";
 import { Screen } from "@/src/components/ui/screen";
-import { createPoint, listPoints, reviewPoint } from "@/src/lib/api";
+import { createPoint, listPointTags, listPoints, reviewPoint } from "@/src/lib/api";
 import { calculateDistanceMeters, formatDistance } from "@/src/lib/format";
 import { geocodeAddress } from "@/src/lib/geocoding";
 import { loadGroupSelection, saveGroupSelection } from "@/src/lib/group-selection";
 import { isPointPendingForReview } from "@/src/lib/point-display";
 import { useAppContext } from "@/src/providers/app-provider";
 import { colors, spacing } from "@/src/theme";
-import type { CreatePointPayload, PointRecord } from "@/src/types/domain";
+import type { CreatePointPayload, PointRecord, PointTagRecord } from "@/src/types/domain";
 
 const DEFAULT_REGION: MapRegion = {
   latitude: -22.9068,
@@ -41,6 +42,47 @@ function createFocusedRegion(latitude: number, longitude: number): MapRegion {
     latitudeDelta: 0.004,
     longitudeDelta: 0.004,
   };
+}
+
+function syncSelection(current: string[], availableIds: string[]) {
+  if (!availableIds.length) {
+    return [];
+  }
+
+  const availableIdSet = new Set(availableIds);
+  const preserved = current.filter((item) => availableIdSet.has(item));
+
+  if (!preserved.length) {
+    return availableIds;
+  }
+
+  return preserved;
+}
+
+function FilterChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected }}
+      onPress={onPress}
+      style={[styles.filterChip, selected ? styles.filterChipSelected : null]}
+    >
+      <Text style={[styles.filterChipCheck, selected ? styles.filterChipCheckSelected : null]}>
+        {selected ? "☑" : "☐"}
+      </Text>
+      <Text style={[styles.filterChipLabel, selected ? styles.filterChipLabelSelected : null]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
 }
 
 export function MapScreen() {
@@ -59,62 +101,75 @@ export function MapScreen() {
   const submissionGroups = userContext?.submission_groups ?? [];
   const approvableGroups = userContext?.approvable_groups ?? [];
   const [points, setPoints] = useState<PointRecord[]>([]);
-  const [classificationFilter, setClassificationFilter] = useState("all");
+  const [allPointTags, setAllPointTags] = useState<PointTagRecord[]>([]);
   const [groupFilter, setGroupFilter] = useState("all");
   const [pendingOnly, setPendingOnly] = useState(false);
-  const [isGroupSwitcherOpen, setIsGroupSwitcherOpen] = useState(!initialGroupCode);
+  const [selectedClassificationIds, setSelectedClassificationIds] = useState<string[]>([]);
+  const [selectedSpeciesIds, setSelectedSpeciesIds] = useState<string[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedPoint, setSelectedPoint] = useState<PointRecord | null>(null);
   const [mapRegion, setMapRegion] = useState<MapRegion>(DEFAULT_REGION);
   const [mapCenter, setMapCenter] = useState<{ latitude: number; longitude: number } | null>(null);
   const [addressQuery, setAddressQuery] = useState("");
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [draftValues, setDraftValues] = useState<Partial<CreatePointPayload>>({});
 
-  useEffect(() => {
-    let isMounted = true;
+  const classificationIds = useMemo(
+    () => classifications.map((classification) => classification.id),
+    [classifications],
+  );
 
-    async function locateUser() {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+  const centerOnCurrentLocation = useCallback(
+    async (animate = true, notifyOnError = true) => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
 
-      if (status !== "granted") {
-        if (isMounted) {
-          setMapRegion(DEFAULT_REGION);
-          setMapCenter({
-            latitude: DEFAULT_REGION.latitude,
-            longitude: DEFAULT_REGION.longitude,
+        if (status !== "granted") {
+          if (notifyOnError) {
+            Toast.show({
+              type: "error",
+              text1: "Localizacao nao permitida",
+            });
+          }
+          return;
+        }
+
+        const currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const nextRegion = createFocusedRegion(
+          currentLocation.coords.latitude,
+          currentLocation.coords.longitude,
+        );
+
+        setMapRegion(nextRegion);
+        setMapCenter({
+          latitude: nextRegion.latitude,
+          longitude: nextRegion.longitude,
+        });
+
+        if (animate) {
+          mapRef.current?.animateToRegion(nextRegion, 450);
+        }
+      } catch (error) {
+        if (notifyOnError) {
+          Toast.show({
+            type: "error",
+            text1: "Nao foi possivel obter sua localizacao",
+            text2: error instanceof Error ? error.message : "Tente novamente.",
           });
         }
-        return;
       }
+    },
+    [],
+  );
 
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      if (!isMounted) {
-        return;
-      }
-
-      const nextRegion = createFocusedRegion(
-        currentLocation.coords.latitude,
-        currentLocation.coords.longitude,
-      );
-
-      setMapRegion(nextRegion);
-      setMapCenter({
-        latitude: nextRegion.latitude,
-        longitude: nextRegion.longitude,
-      });
-    }
-
-    void locateUser();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  useEffect(() => {
+    void centerOnCurrentLocation(false, false);
+  }, [centerOnCurrentLocation]);
 
   useEffect(() => {
     let ignore = false;
@@ -144,7 +199,6 @@ export function MapScreen() {
       }
 
       setGroupFilter(fallbackSelection);
-      setIsGroupSwitcherOpen(fallbackSelection === "all" && visibleGroups.length > 1);
 
       if (codedGroup?.id || savedGroup?.id) {
         await saveGroupSelection(fallbackSelection);
@@ -158,13 +212,46 @@ export function MapScreen() {
     };
   }, [initialGroupCode, userContext?.preferred_group, visibleGroups]);
 
+  useEffect(() => {
+    setSelectedClassificationIds((current) => syncSelection(current, classificationIds));
+  }, [classificationIds]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadTags() {
+      try {
+        const tags = await listPointTags({ onlyActive: true });
+
+        if (!ignore) {
+          setAllPointTags(tags);
+        }
+      } catch (error) {
+        if (!ignore) {
+          Toast.show({
+            type: "error",
+            text1: "Nao foi possivel carregar tags",
+            text2: error instanceof Error ? error.message : "Tente novamente.",
+          });
+        }
+      }
+    }
+
+    if (isReady) {
+      void loadTags();
+    }
+
+    return () => {
+      ignore = true;
+    };
+  }, [isReady]);
+
   const refreshPoints = useCallback(
-    async (nextClassificationId = classificationFilter, nextGroupId = groupFilter) => {
+    async (nextGroupId = groupFilter) => {
       setIsLoading(true);
 
       try {
         const nextPoints = await listPoints({
-          classificationId: nextClassificationId === "all" ? null : nextClassificationId,
           groupId: nextGroupId === "all" ? null : nextGroupId,
         });
         setPoints(nextPoints);
@@ -179,7 +266,7 @@ export function MapScreen() {
         setIsLoading(false);
       }
     },
-    [classificationFilter, groupFilter],
+    [groupFilter],
   );
 
   useEffect(() => {
@@ -190,18 +277,120 @@ export function MapScreen() {
     void refreshPoints();
   }, [isReady, refreshPoints]);
 
+  const selectedClassificationIdSet = useMemo(
+    () => new Set(selectedClassificationIds),
+    [selectedClassificationIds],
+  );
   const selectedGroup = visibleGroups.find((group) => group.id === groupFilter) ?? null;
+  const isAllGroupsSelected = groupFilter === "all";
   const currentGroupSummary =
-    selectedGroup ??
-    userContext?.preferred_group ??
-    (visibleGroups.length === 1 ? visibleGroups[0] : null);
-  const showGroupPicker =
-    visibleGroups.length > 1 && (groupFilter === "all" || isGroupSwitcherOpen);
+    isAllGroupsSelected ? null : selectedGroup ?? (visibleGroups.length === 1 ? visibleGroups[0] : null);
   const canReviewInCurrentScope =
     groupFilter === "all"
       ? approvableGroups.length > 0
       : approvableGroups.some((group) => group.id === groupFilter);
-  const filteredPoints = pendingOnly ? points.filter((point) => isPointPendingForReview(point)) : points;
+
+  const activeClassifications = useMemo(
+    () => classifications.filter((classification) => selectedClassificationIdSet.has(classification.id)),
+    [classifications, selectedClassificationIdSet],
+  );
+  const classificationsRequiringSpecies = useMemo(
+    () => activeClassifications.filter((classification) => classification.requires_species),
+    [activeClassifications],
+  );
+  const availableSpecies = useMemo(
+    () => (classificationsRequiringSpecies.length ? speciesCatalog : []),
+    [classificationsRequiringSpecies.length, speciesCatalog],
+  );
+  const availableTags = useMemo(
+    () =>
+      allPointTags.filter((tag) => selectedClassificationIdSet.has(tag.point_classification_id)),
+    [allPointTags, selectedClassificationIdSet],
+  );
+
+  useEffect(() => {
+    setSelectedSpeciesIds((current) =>
+      syncSelection(
+        current,
+        availableSpecies.map((species) => species.id),
+      ),
+    );
+  }, [availableSpecies]);
+
+  useEffect(() => {
+    setSelectedTagIds((current) =>
+      syncSelection(
+        current,
+        availableTags.map((tag) => tag.id),
+      ),
+    );
+  }, [availableTags]);
+
+  const selectedSpeciesIdSet = useMemo(() => new Set(selectedSpeciesIds), [selectedSpeciesIds]);
+  const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
+  const classificationMap = useMemo(
+    () => new Map(classifications.map((classification) => [classification.id, classification])),
+    [classifications],
+  );
+  const classificationTagMap = useMemo(() => {
+    const entries = new Map<string, PointTagRecord[]>();
+
+    for (const tag of availableTags) {
+      const current = entries.get(tag.point_classification_id) ?? [];
+      current.push(tag);
+      entries.set(tag.point_classification_id, current);
+    }
+
+    return entries;
+  }, [availableTags]);
+  const speciesFilterActive =
+    availableSpecies.length > 0 && selectedSpeciesIds.length !== availableSpecies.length;
+  const tagFilterActive = availableTags.length > 0 && selectedTagIds.length !== availableTags.length;
+
+  const filteredPoints = useMemo(
+    () =>
+      points
+        .filter((point) => selectedClassificationIdSet.has(point.classification_id))
+        .filter((point) => !pendingOnly || isPointPendingForReview(point))
+        .filter((point) => {
+          if (!speciesFilterActive) {
+            return true;
+          }
+
+          const classification = classificationMap.get(point.classification_id);
+
+          if (!classification?.requires_species) {
+            return true;
+          }
+
+          return point.species_id ? selectedSpeciesIdSet.has(point.species_id) : false;
+        })
+        .filter((point) => {
+          if (!tagFilterActive) {
+            return true;
+          }
+
+          const tagsForClassification = classificationTagMap.get(point.classification_id) ?? [];
+
+          if (!tagsForClassification.length) {
+            return true;
+          }
+
+          const pointTagIds = new Set((point.tags ?? []).map((tag) => tag.id));
+          return Array.from(pointTagIds).some((tagId) => selectedTagIdSet.has(tagId));
+        }),
+    [
+      classificationMap,
+      classificationTagMap,
+      pendingOnly,
+      points,
+      selectedClassificationIdSet,
+      selectedSpeciesIdSet,
+      selectedTagIdSet,
+      speciesFilterActive,
+      tagFilterActive,
+    ],
+  );
   const sortedPoints = useMemo(
     () =>
       [...filteredPoints]
@@ -252,36 +441,46 @@ export function MapScreen() {
       return;
     }
 
-      setDraftValues({
-        groupId: defaultSubmissionGroupId,
-        classificationId: classifications[0]?.id ?? "",
-        longitude: coordinates?.longitude,
-        latitude: coordinates?.latitude,
-        isPublic: submissionGroups.find((group) => group.id === defaultSubmissionGroupId)?.is_public ?? false,
-      });
-      setIsCreateOpen(true);
+    setDraftValues({
+      groupId: defaultSubmissionGroupId,
+      classificationId: classifications[0]?.id ?? "",
+      longitude: coordinates?.longitude,
+      latitude: coordinates?.latitude,
+      isPublic:
+        submissionGroups.find((group) => group.id === defaultSubmissionGroupId)?.is_public ?? false,
+    });
+    setIsCreateOpen(true);
   }
 
   async function handleCreatePoint(payload: CreatePointPayload) {
     const createdPoint = await createPoint(payload);
     setIsCreateOpen(false);
-    await refreshPoints(
-      classificationFilter !== "all" && classificationFilter !== createdPoint.classification_id
-        ? "all"
-        : classificationFilter,
-      groupFilter !== "all" && groupFilter !== createdPoint.group_id ? createdPoint.group_id : groupFilter,
-    );
+
+    const nextGroupFilter =
+      groupFilter !== "all" && groupFilter !== createdPoint.group_id ? createdPoint.group_id : groupFilter;
+
+    if (nextGroupFilter !== groupFilter) {
+      setGroupFilter(nextGroupFilter);
+      await saveGroupSelection(nextGroupFilter);
+    }
+
+    await refreshPoints(nextGroupFilter);
     focusPoint(createdPoint);
     Toast.show({
       type: "success",
-      text1: createdPoint.approval_status === "pending" ? "Ponto enviado para aprovacao" : "Ponto criado",
+      text1:
+        createdPoint.approval_status === "pending" ? "Ponto enviado para aprovacao" : "Ponto criado",
     });
   }
 
   async function handleReview(point: PointRecord, action: "approve" | "reject") {
     const updatedPoint = await reviewPoint(point.id, action);
     await refreshPoints();
-    setSelectedPoint(action === "approve" && (!pendingOnly || isPointPendingForReview(updatedPoint)) ? updatedPoint : null);
+    setSelectedPoint(
+      action === "approve" && (!pendingOnly || isPointPendingForReview(updatedPoint))
+        ? updatedPoint
+        : null,
+    );
     Toast.show({
       type: "success",
       text1:
@@ -310,6 +509,7 @@ export function MapScreen() {
       setMapRegion(nextRegion);
       setMapCenter({ latitude: result.latitude, longitude: result.longitude });
       mapRef.current?.animateToRegion(nextRegion, 450);
+      setIsFiltersOpen(false);
       Toast.show({
         type: "success",
         text1: "Endereco localizado",
@@ -330,6 +530,15 @@ export function MapScreen() {
     return <LoadingView label="Carregando mapa..." />;
   }
 
+  const currentGroupTitle = currentGroupSummary?.name ?? "Todos os grupos visíveis";
+  const groupActionLabel = selectedGroup || isAllGroupsSelected ? "Trocar grupo" : "Escolher grupo";
+  const filterSummaryCount =
+    Number(groupFilter !== "all") +
+    Number(pendingOnly) +
+    Number(selectedClassificationIds.length !== classificationIds.length) +
+    Number(speciesFilterActive) +
+    Number(tagFilterActive);
+
   return (
     <Screen>
       <Card>
@@ -338,12 +547,14 @@ export function MapScreen() {
             <Text style={styles.eyebrow}>Mapa</Text>
             <View style={styles.groupHeader}>
               {currentGroupSummary ? (
-                <GroupAvatar logoUrl={currentGroupSummary.logo_url} name={currentGroupSummary.name} size={32} />
+                <GroupAvatar
+                  logoUrl={currentGroupSummary.logo_url}
+                  name={currentGroupSummary.name}
+                  size={40}
+                />
               ) : null}
               <View style={styles.groupHeaderCopy}>
-                <Text style={styles.title}>
-                  {currentGroupSummary?.name ?? "Todos os grupos visíveis"}
-                </Text>
+                <Text style={styles.title}>{currentGroupTitle}</Text>
                 <Text style={styles.subtitle}>
                   {currentGroupSummary
                     ? `Grupo ${currentGroupSummary.is_public ? "publico" : "privado"}`
@@ -352,37 +563,111 @@ export function MapScreen() {
               </View>
             </View>
           </View>
-          <View style={styles.headerActions}>
-            <Badge>{isLoading ? "Carregando..." : `${filteredPoints.length} pontos`}</Badge>
-            {submissionGroups.length ? (
-              <Button compact label="Novo ponto" onPress={() => openCreateModal()} variant="secondary" />
-            ) : null}
-          </View>
+          <Badge>{isLoading ? "Carregando..." : `${filteredPoints.length} pontos`}</Badge>
         </View>
 
-        <View style={styles.filterStack}>
-          <Field>
-            <FieldLabel>Classificacao</FieldLabel>
-            <View style={styles.pickerWrapper}>
-              <Picker selectedValue={classificationFilter} onValueChange={setClassificationFilter}>
-                <Picker.Item label="Todas as classificacoes" value="all" />
-                {classifications.map((classification) => (
-                  <Picker.Item key={classification.id} label={classification.name} value={classification.id} />
-                ))}
-              </Picker>
-            </View>
-          </Field>
+        <View style={styles.topActions}>
+          {visibleGroups.length > 1 ? (
+            <Button
+              compact
+              label={groupActionLabel}
+              onPress={() => setIsFiltersOpen(true)}
+              variant="ghost"
+            />
+          ) : null}
+          <Button
+            compact
+            label={filterSummaryCount ? `Filtros e busca (${filterSummaryCount})` : "Filtros e busca"}
+            onPress={() => setIsFiltersOpen(true)}
+            variant="ghost"
+          />
+        </View>
 
-          {showGroupPicker ? (
+        <View style={styles.mapInfoBox}>
+          <Text style={styles.mapInfoText}>
+            {Platform.OS === "web"
+              ? "Use Novo ponto para criar no centro do mapa. Se preferir um atalho, clique com o botao direito para criar exatamente no local desejado."
+              : "Use Novo ponto para criar no centro do mapa. Arraste o mapa ate o local desejado e toque no botao para cadastrar."}
+          </Text>
+        </View>
+      </Card>
+
+      <Card>
+        <View style={styles.map}>
+          <MapCanvas
+            onLongPress={(coordinates: { latitude: number; longitude: number }) => {
+              openCreateModal(coordinates);
+            }}
+            onRegionChangeComplete={(region: MapRegion) => {
+              setMapRegion(region);
+              setMapCenter({ latitude: region.latitude, longitude: region.longitude });
+            }}
+            onSelectPoint={(point: PointRecord) => setSelectedPoint(point)}
+            points={filteredPoints}
+            ref={mapRef}
+            region={mapRegion}
+            selectedPointId={selectedPoint?.id}
+          />
+        </View>
+        <View style={styles.mapActions}>
+          {submissionGroups.length ? (
+            <Button compact label="Novo ponto" onPress={() => openCreateModal()} variant="secondary" />
+          ) : null}
+          <Button compact label="Minha posicao" onPress={() => void centerOnCurrentLocation()} variant="ghost" />
+        </View>
+      </Card>
+
+      {sortedPoints.length ? (
+        sortedPoints.map(({ point, distance }) => (
+          <PointSummaryCard
+            key={point.id}
+            meta={distance == null ? point.group_name : `${point.group_name} | ${formatDistance(distance)}`}
+            onCenter={() => focusPoint(point)}
+            onPress={() => setSelectedPoint(point)}
+            point={point}
+          />
+        ))
+      ) : (
+        <EmptyState
+          title="Nenhum ponto no filtro"
+          description="Ajuste grupo, classificacoes, especies, tags ou pendencias para encontrar registros."
+        />
+      )}
+
+      <PointActionModal
+        onApprove={(point) => void handleReview(point, "approve")}
+        onClose={() => setSelectedPoint(null)}
+        onEdit={(point) => router.push(`/points/${point.id}/edit`)}
+        onOpenDetail={(point) => router.push(`/points/${point.id}`)}
+        onReject={(point) => void handleReview(point, "reject")}
+        open={Boolean(selectedPoint)}
+        point={selectedPoint}
+      />
+
+      <PointFormModal
+        classifications={classifications}
+        groups={submissionGroups}
+        initialValues={draftValues}
+        onClose={() => setIsCreateOpen(false)}
+        onSubmit={handleCreatePoint}
+        open={isCreateOpen}
+        speciesCatalog={speciesCatalog}
+        submitLabel="Criar ponto"
+        title="Novo ponto"
+      />
+
+      <ModalSheet open={isFiltersOpen} onClose={() => setIsFiltersOpen(false)} title="Filtros e busca">
+        <ScrollView contentContainerStyle={styles.filtersContent}>
+          {visibleGroups.length > 1 ? (
             <Field>
               <FieldLabel>Grupo</FieldLabel>
               <View style={styles.pickerWrapper}>
                 <Picker
                   selectedValue={groupFilter}
                   onValueChange={(value) => {
-                    setGroupFilter(value);
-                    setIsGroupSwitcherOpen(value === "all");
-                    void saveGroupSelection(value);
+                    const nextValue = String(value);
+                    setGroupFilter(nextValue);
+                    void saveGroupSelection(nextValue);
                   }}
                 >
                   <Picker.Item label="Todos os grupos visíveis" value="all" />
@@ -396,14 +681,6 @@ export function MapScreen() {
                 </Picker>
               </View>
             </Field>
-          ) : currentGroupSummary && visibleGroups.length > 1 ? (
-            <View style={styles.activeGroupBox}>
-              <Text style={styles.activeGroupLabel}>Grupo ativo</Text>
-              <Text style={styles.activeGroupName}>{currentGroupSummary.name}</Text>
-              <Pressable onPress={() => setIsGroupSwitcherOpen(true)}>
-                <Text style={styles.inlineAction}>Trocar grupo</Text>
-              </Pressable>
-            </View>
           ) : null}
 
           <Field>
@@ -430,76 +707,140 @@ export function MapScreen() {
               value={pendingOnly}
             />
           ) : null}
-        </View>
-      </Card>
 
-      <Card>
-        <View style={styles.map}>
-          <MapCanvas
-            onLongPress={(coordinates: { latitude: number; longitude: number }) => {
-              openCreateModal(coordinates);
-            }}
-            onRegionChangeComplete={(region: MapRegion) => {
-              setMapRegion(region);
-              setMapCenter({ latitude: region.latitude, longitude: region.longitude });
-            }}
-            onSelectPoint={(point: PointRecord) => setSelectedPoint(point)}
-            points={filteredPoints}
-            ref={mapRef}
-            region={mapRegion}
-            selectedPointId={selectedPoint?.id}
-          />
-        </View>
-        <Text style={styles.mapHint}>Toque prolongado no mapa para abrir o cadastro na coordenada.</Text>
-      </Card>
+          <View style={styles.filterSection}>
+            <Text style={styles.filterTitle}>Classificacoes</Text>
+            <Text style={styles.filterDescription}>
+              Os pontos do mapa respeitam todas as classificacoes marcadas abaixo.
+            </Text>
+            <View style={styles.filterActionRow}>
+              <Button
+                compact
+                label="Marcar todas"
+                onPress={() => setSelectedClassificationIds(classificationIds)}
+                variant="ghost"
+              />
+              <Button
+                compact
+                label="Desmarcar todas"
+                onPress={() => setSelectedClassificationIds([])}
+                variant="ghost"
+              />
+            </View>
+            <View style={styles.filterChipWrap}>
+              {classifications.map((classification) => (
+                <FilterChip
+                  key={classification.id}
+                  label={classification.name}
+                  onPress={() =>
+                    setSelectedClassificationIds((current) =>
+                      current.includes(classification.id)
+                        ? current.filter((item) => item !== classification.id)
+                        : [...current, classification.id],
+                    )
+                  }
+                  selected={selectedClassificationIds.includes(classification.id)}
+                />
+              ))}
+            </View>
+          </View>
 
-      {sortedPoints.length ? (
-        sortedPoints.map(({ point, distance }) => (
-          <PointSummaryCard
-            key={point.id}
-            meta={distance == null ? point.group_name : `${point.group_name} | ${formatDistance(distance)}`}
-            onCenter={() => focusPoint(point)}
-            onPress={() => setSelectedPoint(point)}
-            point={point}
-          />
-        ))
-      ) : (
-        <EmptyState
-          title="Nenhum ponto no filtro"
-          description="Ajuste classificacao, grupo ou a exibicao de pendentes para encontrar registros."
-        />
-      )}
+          {availableSpecies.length ? (
+            <View style={styles.filterSection}>
+              <Text style={styles.filterTitle}>Especies</Text>
+              <Text style={styles.filterDescription}>
+                O filtro por especie afeta apenas os pontos das classificacoes que usam especies.
+              </Text>
+              <View style={styles.filterActionRow}>
+                <Button
+                  compact
+                  label="Marcar todas"
+                  onPress={() => setSelectedSpeciesIds(availableSpecies.map((species) => species.id))}
+                  variant="ghost"
+                />
+                <Button
+                  compact
+                  label="Desmarcar todas"
+                  onPress={() => setSelectedSpeciesIds([])}
+                  variant="ghost"
+                />
+              </View>
+              <View style={styles.filterChipWrap}>
+                {availableSpecies.map((species) => (
+                  <FilterChip
+                    key={species.id}
+                    label={species.common_name}
+                    onPress={() =>
+                      setSelectedSpeciesIds((current) =>
+                        current.includes(species.id)
+                          ? current.filter((item) => item !== species.id)
+                          : [...current, species.id],
+                      )
+                    }
+                    selected={selectedSpeciesIds.includes(species.id)}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
 
-      <PointActionModal
-        onApprove={(point) => void handleReview(point, "approve")}
-        onClose={() => setSelectedPoint(null)}
-        onEdit={(point) => router.push(`/points/${point.id}/edit`)}
-        onOpenDetail={(point) => router.push(`/points/${point.id}`)}
-        onReject={(point) => void handleReview(point, "reject")}
-        open={Boolean(selectedPoint)}
-        point={selectedPoint}
-      />
+          {availableTags.length ? (
+            <View style={styles.filterSection}>
+              <Text style={styles.filterTitle}>Tags</Text>
+              <Text style={styles.filterDescription}>
+                As tags acompanham as classificacoes marcadas. Se todas estiverem marcadas, o mapa nao restringe por tags.
+              </Text>
+              <View style={styles.filterActionRow}>
+                <Button
+                  compact
+                  label="Marcar todas"
+                  onPress={() => setSelectedTagIds(availableTags.map((tag) => tag.id))}
+                  variant="ghost"
+                />
+                <Button
+                  compact
+                  label="Desmarcar todas"
+                  onPress={() => setSelectedTagIds([])}
+                  variant="ghost"
+                />
+              </View>
+              <View style={styles.filterChipWrap}>
+                {availableTags.map((tag) => (
+                  <FilterChip
+                    key={tag.id}
+                    label={tag.name}
+                    onPress={() =>
+                      setSelectedTagIds((current) =>
+                        current.includes(tag.id)
+                          ? current.filter((item) => item !== tag.id)
+                          : [...current, tag.id],
+                      )
+                    }
+                    selected={selectedTagIds.includes(tag.id)}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
 
-      <PointFormModal
-        classifications={classifications}
-        groups={submissionGroups}
-        initialValues={draftValues}
-        onClose={() => setIsCreateOpen(false)}
-        onSubmit={handleCreatePoint}
-        open={isCreateOpen}
-        speciesCatalog={speciesCatalog}
-        submitLabel="Criar ponto"
-        title="Novo ponto"
-      />
+          <View style={styles.filterFooter}>
+            <Button compact label="Fechar" onPress={() => setIsFiltersOpen(false)} />
+          </View>
+        </ScrollView>
+      </ModalSheet>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   headerRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
     gap: spacing.md,
+    justifyContent: "space-between",
   },
   headerCopy: {
+    flex: 1,
     gap: spacing.sm,
   },
   eyebrow: {
@@ -519,21 +860,17 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
   },
   subtitle: {
     color: colors.textMuted,
     fontSize: 13,
   },
-  headerActions: {
-    alignItems: "center",
+  topActions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  filterStack: {
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   pickerWrapper: {
     backgroundColor: colors.surface,
@@ -542,27 +879,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "hidden",
   },
-  activeGroupBox: {
+  mapInfoBox: {
     backgroundColor: colors.surfaceSoft,
     borderColor: colors.border,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 4,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  activeGroupLabel: {
+  mapInfoText: {
     color: colors.textMuted,
-    fontSize: 12,
-  },
-  activeGroupName: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  inlineAction: {
-    color: colors.primary,
     fontSize: 13,
-    fontWeight: "700",
+    lineHeight: 19,
   },
   addressRow: {
     alignItems: "center",
@@ -574,8 +902,71 @@ const styles = StyleSheet.create({
     height: 360,
     overflow: "hidden",
   },
-  mapHint: {
+  mapActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    justifyContent: "flex-end",
+  },
+  filtersContent: {
+    gap: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  filterSection: {
+    gap: spacing.sm,
+  },
+  filterTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  filterDescription: {
     color: colors.textMuted,
-    fontSize: 12,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  filterActionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  filterChipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  filterChip: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  filterChipSelected: {
+    borderColor: colors.primary,
+  },
+  filterChipCheck: {
+    color: colors.primary,
+    fontSize: 14,
+  },
+  filterChipCheckSelected: {
+    color: colors.primaryStrong,
+  },
+  filterChipLabel: {
+    color: colors.text,
+    fontSize: 14,
+  },
+  filterChipLabelSelected: {
+    color: colors.primaryStrong,
+    fontWeight: "700",
+  },
+  filterFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
 });
