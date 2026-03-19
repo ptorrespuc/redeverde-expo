@@ -19,7 +19,7 @@ import { Field, FieldInput, FieldLabel, FieldSwitch } from "@/src/components/ui/
 import { LoadingView } from "@/src/components/ui/loading-view";
 import { ModalSheet } from "@/src/components/ui/modal-sheet";
 import { Screen } from "@/src/components/ui/screen";
-import { createPoint, listPointTags, listPoints, reviewPoint } from "@/src/lib/api";
+import { createPoint, listPoints, reviewPoint } from "@/src/lib/api";
 import { calculateDistanceMeters, formatDistance } from "@/src/lib/format";
 import { geocodeAddress } from "@/src/lib/geocoding";
 import { loadGroupSelection, saveGroupSelection } from "@/src/lib/group-selection";
@@ -101,7 +101,6 @@ export function MapScreen() {
   const submissionGroups = userContext?.submission_groups ?? [];
   const approvableGroups = userContext?.approvable_groups ?? [];
   const [points, setPoints] = useState<PointRecord[]>([]);
-  const [allPointTags, setAllPointTags] = useState<PointTagRecord[]>([]);
   const [groupFilter, setGroupFilter] = useState("all");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [selectedClassificationIds, setSelectedClassificationIds] = useState<string[]>([]);
@@ -116,11 +115,6 @@ export function MapScreen() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [draftValues, setDraftValues] = useState<Partial<CreatePointPayload>>({});
-
-  const classificationIds = useMemo(
-    () => classifications.map((classification) => classification.id),
-    [classifications],
-  );
 
   const centerOnCurrentLocation = useCallback(
     async (animate = true, notifyOnError = true) => {
@@ -212,40 +206,6 @@ export function MapScreen() {
     };
   }, [initialGroupCode, userContext?.preferred_group, visibleGroups]);
 
-  useEffect(() => {
-    setSelectedClassificationIds((current) => syncSelection(current, classificationIds));
-  }, [classificationIds]);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function loadTags() {
-      try {
-        const tags = await listPointTags({ onlyActive: true });
-
-        if (!ignore) {
-          setAllPointTags(tags);
-        }
-      } catch (error) {
-        if (!ignore) {
-          Toast.show({
-            type: "error",
-            text1: "Nao foi possivel carregar tags",
-            text2: error instanceof Error ? error.message : "Tente novamente.",
-          });
-        }
-      }
-    }
-
-    if (isReady) {
-      void loadTags();
-    }
-
-    return () => {
-      ignore = true;
-    };
-  }, [isReady]);
-
   const refreshPoints = useCallback(
     async (nextGroupId = groupFilter) => {
       setIsLoading(true);
@@ -277,10 +237,6 @@ export function MapScreen() {
     void refreshPoints();
   }, [isReady, refreshPoints]);
 
-  const selectedClassificationIdSet = useMemo(
-    () => new Set(selectedClassificationIds),
-    [selectedClassificationIds],
-  );
   const selectedGroup = visibleGroups.find((group) => group.id === groupFilter) ?? null;
   const isAllGroupsSelected = groupFilter === "all";
   const currentGroupSummary =
@@ -290,22 +246,87 @@ export function MapScreen() {
       ? approvableGroups.length > 0
       : approvableGroups.some((group) => group.id === groupFilter);
 
+  const availableClassificationIds = useMemo(
+    () => Array.from(new Set(points.map((point) => point.classification_id))),
+    [points],
+  );
+  const selectedClassificationIdSet = useMemo(
+    () => new Set(selectedClassificationIds),
+    [selectedClassificationIds],
+  );
+  const availableClassifications = useMemo(
+    () =>
+      classifications.filter((classification) => availableClassificationIds.includes(classification.id)),
+    [availableClassificationIds, classifications],
+  );
+
+  useEffect(() => {
+    setSelectedClassificationIds((current) => syncSelection(current, availableClassificationIds));
+  }, [availableClassificationIds]);
+
   const activeClassifications = useMemo(
-    () => classifications.filter((classification) => selectedClassificationIdSet.has(classification.id)),
-    [classifications, selectedClassificationIdSet],
+    () =>
+      classifications.filter(
+        (classification) =>
+          selectedClassificationIdSet.has(classification.id) &&
+          availableClassificationIds.includes(classification.id),
+      ),
+    [availableClassificationIds, classifications, selectedClassificationIdSet],
   );
   const classificationsRequiringSpecies = useMemo(
     () => activeClassifications.filter((classification) => classification.requires_species),
     [activeClassifications],
   );
+  const speciesCatalogMap = useMemo(
+    () => new Map(speciesCatalog.map((species) => [species.id, species])),
+    [speciesCatalog],
+  );
   const availableSpecies = useMemo(
-    () => (classificationsRequiringSpecies.length ? speciesCatalog : []),
-    [classificationsRequiringSpecies.length, speciesCatalog],
+    () => {
+      if (!classificationsRequiringSpecies.length) {
+        return [];
+      }
+
+      const speciesIds = new Set<string>();
+
+      for (const point of points) {
+        const classification = classifications.find((item) => item.id === point.classification_id);
+
+        if (!classification?.requires_species || !selectedClassificationIdSet.has(point.classification_id)) {
+          continue;
+        }
+
+        if (point.species_id) {
+          speciesIds.add(point.species_id);
+        }
+      }
+
+      return Array.from(speciesIds)
+        .map((speciesId) => speciesCatalogMap.get(speciesId))
+        .filter((species): species is NonNullable<typeof species> => Boolean(species))
+        .sort((left, right) => left.common_name.localeCompare(right.common_name, "pt-BR"));
+    },
+    [classifications, classificationsRequiringSpecies.length, points, selectedClassificationIdSet, speciesCatalogMap],
   );
   const availableTags = useMemo(
-    () =>
-      allPointTags.filter((tag) => selectedClassificationIdSet.has(tag.point_classification_id)),
-    [allPointTags, selectedClassificationIdSet],
+    () => {
+      const tagsById = new Map<string, PointTagRecord>();
+
+      for (const point of points) {
+        if (!selectedClassificationIdSet.has(point.classification_id)) {
+          continue;
+        }
+
+        for (const tag of point.tags ?? []) {
+          tagsById.set(tag.id, tag);
+        }
+      }
+
+      return Array.from(tagsById.values()).sort((left, right) =>
+        left.name.localeCompare(right.name, "pt-BR"),
+      );
+    },
+    [points, selectedClassificationIdSet],
   );
 
   useEffect(() => {
@@ -535,7 +556,7 @@ export function MapScreen() {
   const filterSummaryCount =
     Number(groupFilter !== "all") +
     Number(pendingOnly) +
-    Number(selectedClassificationIds.length !== classificationIds.length) +
+    Number(selectedClassificationIds.length !== availableClassificationIds.length) +
     Number(speciesFilterActive) +
     Number(tagFilterActive);
 
@@ -717,7 +738,7 @@ export function MapScreen() {
               <Button
                 compact
                 label="Marcar todas"
-                onPress={() => setSelectedClassificationIds(classificationIds)}
+                onPress={() => setSelectedClassificationIds(availableClassificationIds)}
                 variant="ghost"
               />
               <Button
@@ -728,7 +749,7 @@ export function MapScreen() {
               />
             </View>
             <View style={styles.filterChipWrap}>
-              {classifications.map((classification) => (
+              {availableClassifications.map((classification) => (
                 <FilterChip
                   key={classification.id}
                   label={classification.name}
@@ -743,6 +764,11 @@ export function MapScreen() {
                 />
               ))}
             </View>
+            {!availableClassifications.length ? (
+              <Text style={styles.filterDescription}>
+                Nenhuma classificação encontrada para os pontos do grupo atual.
+              </Text>
+            ) : null}
           </View>
 
           {availableSpecies.length ? (
