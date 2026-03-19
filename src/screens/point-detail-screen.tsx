@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import * as Linking from "expo-linking";
 import Toast from "react-native-toast-message";
 
 import { GroupAvatar } from "@/src/components/groups/group-avatar";
@@ -15,6 +16,7 @@ import { Screen } from "@/src/components/ui/screen";
 import {
   createPointEvent,
   getPoint,
+  listPointMedia,
   listPointEvents,
   listPointEventTypes,
   reviewPoint,
@@ -23,7 +25,12 @@ import { formatDateTime } from "@/src/lib/format";
 import { getPointDisplayStatusLabel } from "@/src/lib/point-display";
 import { useAppContext } from "@/src/providers/app-provider";
 import { colors, spacing } from "@/src/theme";
-import type { PointDetailRecord, PointEventRecord, PointEventTypeRecord } from "@/src/types/domain";
+import type {
+  PointDetailRecord,
+  PointEventRecord,
+  PointEventTypeRecord,
+  PointMediaRecord,
+} from "@/src/types/domain";
 
 export function PointDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -32,6 +39,7 @@ export function PointDetailScreen() {
   const { isReady } = useAppContext();
   const [point, setPoint] = useState<PointDetailRecord | null>(null);
   const [events, setEvents] = useState<PointEventRecord[]>([]);
+  const [pointMedia, setPointMedia] = useState<PointMediaRecord[]>([]);
   const [eventTypeOptions, setEventTypeOptions] = useState<PointEventTypeRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -45,13 +53,15 @@ export function PointDetailScreen() {
 
     try {
       const nextPoint = await getPoint(id);
-      const [nextEvents, nextEventTypes] = await Promise.all([
+      const [nextEvents, nextEventTypes, nextPointMedia] = await Promise.all([
         listPointEvents(id),
         listPointEventTypes(nextPoint.classification_id),
+        listPointMedia(id),
       ]);
       setPoint(nextPoint);
       setEvents(nextEvents);
       setEventTypeOptions(nextEventTypes);
+      setPointMedia(nextPointMedia);
     } catch (error) {
       Toast.show({
         type: "error",
@@ -193,6 +203,48 @@ export function PointDetailScreen() {
         </View>
       </Card>
 
+      {pointMedia.length ? (
+        <Card>
+          <Text style={styles.sectionTitle}>Fotos do ponto</Text>
+          <Text style={styles.sectionSubtitle}>
+            Imagens registradas no cadastro inicial do ponto.
+          </Text>
+          <ScrollView
+            contentContainerStyle={styles.photoRow}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+          >
+            {pointMedia.map((media) => (
+              <Pressable
+                disabled={!media.signed_url}
+                key={media.id}
+                onPress={() => {
+                  if (!media.signed_url) {
+                    return;
+                  }
+
+                  void Linking.openURL(media.signed_url);
+                }}
+                style={styles.photoCard}
+              >
+                {media.signed_url ? (
+                  <Image
+                    resizeMode="cover"
+                    source={{ uri: media.signed_url }}
+                    style={styles.photoImage}
+                  />
+                ) : (
+                  <View style={[styles.photoImage, styles.photoPlaceholder]}>
+                    <Text style={styles.photoPlaceholderText}>Imagem indisponivel</Text>
+                  </View>
+                )}
+                {media.caption ? <Text style={styles.photoCaption}>{media.caption}</Text> : null}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Card>
+      ) : null}
+
       <Card>
         <Text style={styles.sectionTitle}>Timeline</Text>
         {events.length ? (
@@ -296,6 +348,42 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
     fontWeight: "700",
+  },
+  sectionSubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  photoRow: {
+    gap: spacing.md,
+    paddingRight: spacing.xs,
+  },
+  photoCard: {
+    gap: spacing.sm,
+    width: 220,
+  },
+  photoImage: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 16,
+    height: 180,
+    width: "100%",
+  },
+  photoPlaceholder: {
+    alignItems: "center",
+    borderColor: colors.border,
+    borderWidth: 1,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+  },
+  photoPlaceholderText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: "center",
+  },
+  photoCaption: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   timelineItem: {
     borderLeftColor: colors.secondary,

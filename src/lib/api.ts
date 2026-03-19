@@ -12,6 +12,7 @@ import type {
   PointDetailRecord,
   PointEventRecord,
   PointEventTypeRecord,
+  PointMediaRecord,
   PointRecord,
   PointTagRecord,
   SpeciesRecord,
@@ -41,6 +42,9 @@ function requireData<T>(data: T | null, error: { message: string } | null) {
 function getAuthRedirectUrl(pathname: string) {
   return Linking.createURL(pathname);
 }
+
+const POINT_MEDIA_BUCKET = "point-timeline-media";
+const POINT_MEDIA_SIGNED_URL_TTL_SECONDS = 60 * 60 * 12;
 
 export async function getCurrentSession() {
   const {
@@ -268,6 +272,38 @@ export async function listPointEvents(pointId: string) {
   return (rows ?? []).map((event) => ({
     ...event,
     media: event.media ?? [],
+  }));
+}
+
+export async function listPointMedia(pointId: string) {
+  const { data, error } = await supabase
+    .from("point_media")
+    .select("id, point_id, point_event_id, file_url, caption, created_at")
+    .eq("point_id", pointId)
+    .is("point_event_id", null)
+    .order("created_at", { ascending: true });
+
+  const rows = requireData(data, error) as Omit<PointMediaRecord, "signed_url">[] | null;
+  const mediaRows = rows ?? [];
+
+  const signedUrls = await Promise.all(
+    mediaRows.map(async (media) => {
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from(POINT_MEDIA_BUCKET)
+        .createSignedUrl(media.file_url, POINT_MEDIA_SIGNED_URL_TTL_SECONDS);
+
+      return {
+        fileUrl: media.file_url,
+        signedUrl: signedUrlError ? null : signedUrlData.signedUrl,
+      };
+    }),
+  );
+
+  const signedUrlMap = new Map(signedUrls.map((entry) => [entry.fileUrl, entry.signedUrl]));
+
+  return mediaRows.map((media) => ({
+    ...media,
+    signed_url: signedUrlMap.get(media.file_url) ?? null,
   }));
 }
 

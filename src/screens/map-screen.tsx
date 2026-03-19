@@ -89,6 +89,7 @@ export function MapScreen() {
   const params = useLocalSearchParams<{ group?: string; grupo?: string }>();
   const router = useRouter();
   const mapRef = useRef<MapCanvasHandle | null>(null);
+  const screenScrollRef = useRef<ScrollView | null>(null);
   const {
     classifications,
     isAuthenticated,
@@ -115,6 +116,7 @@ export function MapScreen() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [draftValues, setDraftValues] = useState<Partial<CreatePointPayload>>({});
+  const [mapSectionY, setMapSectionY] = useState(0);
 
   const centerOnCurrentLocation = useCallback(
     async (animate = true, notifyOnError = true) => {
@@ -458,12 +460,21 @@ export function MapScreen() {
   const defaultSubmissionGroupId =
     submissionGroups.find((group) => group.id === groupFilter)?.id ?? submissionGroups[0]?.id ?? "";
 
-  function focusPoint(point: PointRecord) {
+  function focusPoint(point: PointRecord, options?: { revealMap?: boolean }) {
     const nextRegion = createFocusedRegion(point.latitude, point.longitude);
     setMapRegion(nextRegion);
     setMapCenter({ latitude: point.latitude, longitude: point.longitude });
     mapRef.current?.animateToRegion(nextRegion, 450);
     setSelectedPoint(point);
+
+    if (options?.revealMap) {
+      requestAnimationFrame(() => {
+        screenScrollRef.current?.scrollTo({
+          y: Math.max(mapSectionY - spacing.md, 0),
+          animated: true,
+        });
+      });
+    }
   }
 
   function openCreateModal(coordinates?: { latitude: number; longitude: number }) {
@@ -499,7 +510,7 @@ export function MapScreen() {
     }
 
     await refreshPoints(nextGroupFilter);
-    focusPoint(createdPoint);
+    focusPoint(createdPoint, { revealMap: true });
     Toast.show({
       type: "success",
       text1:
@@ -582,7 +593,7 @@ export function MapScreen() {
     Number(tagFilterActive);
 
   return (
-    <Screen>
+    <Screen scrollViewRef={screenScrollRef}>
       <Card>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
@@ -634,37 +645,43 @@ export function MapScreen() {
         </View>
       </Card>
 
-      <Card>
-        <View style={styles.map}>
-          <MapCanvas
-            onLongPress={(coordinates: { latitude: number; longitude: number }) => {
-              openCreateModal(coordinates);
-            }}
-            onRegionChangeComplete={(region: MapRegion) => {
-              setMapRegion(region);
-              setMapCenter({ latitude: region.latitude, longitude: region.longitude });
-            }}
-            onSelectPoint={(point: PointRecord) => setSelectedPoint(point)}
-            points={filteredPoints}
-            ref={mapRef}
-            region={mapRegion}
-            selectedPointId={selectedPoint?.id}
-          />
-        </View>
-        <View style={styles.mapActions}>
-          {submissionGroups.length ? (
-            <Button compact label="Novo ponto" onPress={() => openCreateModal()} variant="secondary" />
-          ) : null}
-          <Button compact label="Minha posicao" onPress={() => void centerOnCurrentLocation()} variant="ghost" />
-        </View>
-      </Card>
+      <View
+        onLayout={(event) => {
+          setMapSectionY(event.nativeEvent.layout.y);
+        }}
+      >
+        <Card>
+          <View style={styles.map}>
+            <MapCanvas
+              onLongPress={(coordinates: { latitude: number; longitude: number }) => {
+                openCreateModal(coordinates);
+              }}
+              onRegionChangeComplete={(region: MapRegion) => {
+                setMapRegion(region);
+                setMapCenter({ latitude: region.latitude, longitude: region.longitude });
+              }}
+              onSelectPoint={(point: PointRecord) => setSelectedPoint(point)}
+              points={filteredPoints}
+              ref={mapRef}
+              region={mapRegion}
+              selectedPointId={selectedPoint?.id}
+            />
+          </View>
+          <View style={styles.mapActions}>
+            {submissionGroups.length ? (
+              <Button compact label="Novo ponto" onPress={() => openCreateModal()} variant="secondary" />
+            ) : null}
+            <Button compact label="Minha posicao" onPress={() => void centerOnCurrentLocation()} variant="ghost" />
+          </View>
+        </Card>
+      </View>
 
       {sortedPoints.length ? (
         sortedPoints.map(({ point, distance }) => (
           <PointSummaryCard
             key={point.id}
             meta={distance == null ? point.group_name : `${point.group_name} | ${formatDistance(distance)}`}
-            onCenter={() => focusPoint(point)}
+            onCenter={() => focusPoint(point, { revealMap: true })}
             onPress={() => setSelectedPoint(point)}
             point={point}
             showLifecycleStatus={canReviewInCurrentScope}
