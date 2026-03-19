@@ -90,6 +90,7 @@ export function MapScreen() {
   const router = useRouter();
   const mapRef = useRef<MapCanvasHandle | null>(null);
   const screenScrollRef = useRef<ScrollView | null>(null);
+  const focusSelectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     classifications,
     isAuthenticated,
@@ -166,6 +167,14 @@ export function MapScreen() {
   useEffect(() => {
     void centerOnCurrentLocation(false, false);
   }, [centerOnCurrentLocation]);
+
+  useEffect(() => {
+    return () => {
+      if (focusSelectionTimeoutRef.current) {
+        clearTimeout(focusSelectionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -465,16 +474,30 @@ export function MapScreen() {
     setMapRegion(nextRegion);
     setMapCenter({ latitude: point.latitude, longitude: point.longitude });
     mapRef.current?.animateToRegion(nextRegion, 450);
-    setSelectedPoint(point);
+
+    if (focusSelectionTimeoutRef.current) {
+      clearTimeout(focusSelectionTimeoutRef.current);
+      focusSelectionTimeoutRef.current = null;
+    }
 
     if (options?.revealMap) {
+      setSelectedPoint(null);
+
       requestAnimationFrame(() => {
         screenScrollRef.current?.scrollTo({
           y: Math.max(mapSectionY - spacing.md, 0),
           animated: true,
         });
       });
+
+      focusSelectionTimeoutRef.current = setTimeout(() => {
+        setSelectedPoint(point);
+        focusSelectionTimeoutRef.current = null;
+      }, 420);
+      return;
     }
+
+    setSelectedPoint(point);
   }
 
   function openCreateModal(coordinates?: { latitude: number; longitude: number }) {

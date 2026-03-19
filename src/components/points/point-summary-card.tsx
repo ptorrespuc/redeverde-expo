@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { GestureResponderEvent } from "react-native";
 
 import { Badge } from "@/src/components/ui/badge";
 import { Card } from "@/src/components/ui/card";
@@ -53,7 +54,12 @@ export function PointSummaryCard({
         <View style={styles.footer}>
           <Text style={styles.footerMeta}>{meta ?? `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`}</Text>
           {onCenter ? (
-            <Pressable onPress={onCenter}>
+            <Pressable
+              onPress={(event: GestureResponderEvent) => {
+                event.stopPropagation();
+                onCenter();
+              }}
+            >
               <Text style={styles.centerAction}>Centralizar</Text>
             </Pressable>
           ) : null}
