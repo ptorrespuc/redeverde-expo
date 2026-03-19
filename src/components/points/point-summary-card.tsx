@@ -11,9 +11,16 @@ interface PointSummaryCardProps {
   meta?: string;
   onPress?: () => void;
   onCenter?: () => void;
+  showLifecycleStatus?: boolean;
 }
 
-export function PointSummaryCard({ point, meta, onCenter, onPress }: PointSummaryCardProps) {
+export function PointSummaryCard({
+  point,
+  meta,
+  onCenter,
+  onPress,
+  showLifecycleStatus = false,
+}: PointSummaryCardProps) {
   const isPending = isPointPendingForReview(point);
 
   return (
@@ -30,16 +37,11 @@ export function PointSummaryCard({ point, meta, onCenter, onPress }: PointSummar
         </View>
 
         <View style={styles.badges}>
-          <Badge tone={point.approval_status === "pending" ? "warning" : "default"}>
-            {getPointDisplayStatusLabel(point)}
-          </Badge>
-          <Badge tone={point.approval_status === "rejected" ? "danger" : isPending ? "warning" : "success"}>
-            {point.approval_status === "approved"
-              ? "Aprovado"
-              : point.approval_status === "pending"
-                ? "Pendente"
-                : "Rejeitado"}
-          </Badge>
+          {showLifecycleStatus ? (
+            <Badge tone={isPending ? "warning" : "default"}>
+              {getPointDisplayStatusLabel(point)}
+            </Badge>
+          ) : null}
           {point.has_pending_update ? <Badge tone="warning">Alteracao pendente</Badge> : null}
           {point.tags?.map((tag) => (
             <Badge key={tag.id}>{tag.name}</Badge>

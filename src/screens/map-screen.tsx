@@ -245,10 +245,17 @@ export function MapScreen() {
     groupFilter === "all"
       ? approvableGroups.length > 0
       : approvableGroups.some((group) => group.id === groupFilter);
+  const mapScopedPoints = useMemo(
+    () =>
+      points.filter((point) =>
+        point.viewer_can_approve ? true : !isPointPendingForReview(point),
+      ),
+    [points],
+  );
 
   const availableClassificationIds = useMemo(
-    () => Array.from(new Set(points.map((point) => point.classification_id))),
-    [points],
+    () => Array.from(new Set(mapScopedPoints.map((point) => point.classification_id))),
+    [mapScopedPoints],
   );
   const selectedClassificationIdSet = useMemo(
     () => new Set(selectedClassificationIds),
@@ -289,7 +296,7 @@ export function MapScreen() {
 
       const speciesIds = new Set<string>();
 
-      for (const point of points) {
+      for (const point of mapScopedPoints) {
         const classification = classifications.find((item) => item.id === point.classification_id);
 
         if (!classification?.requires_species || !selectedClassificationIdSet.has(point.classification_id)) {
@@ -306,13 +313,19 @@ export function MapScreen() {
         .filter((species): species is NonNullable<typeof species> => Boolean(species))
         .sort((left, right) => left.common_name.localeCompare(right.common_name, "pt-BR"));
     },
-    [classifications, classificationsRequiringSpecies.length, points, selectedClassificationIdSet, speciesCatalogMap],
+    [
+      classifications,
+      classificationsRequiringSpecies.length,
+      mapScopedPoints,
+      selectedClassificationIdSet,
+      speciesCatalogMap,
+    ],
   );
   const availableTags = useMemo(
     () => {
       const tagsById = new Map<string, PointTagRecord>();
 
-      for (const point of points) {
+      for (const point of mapScopedPoints) {
         if (!selectedClassificationIdSet.has(point.classification_id)) {
           continue;
         }
@@ -326,7 +339,7 @@ export function MapScreen() {
         left.name.localeCompare(right.name, "pt-BR"),
       );
     },
-    [points, selectedClassificationIdSet],
+    [mapScopedPoints, selectedClassificationIdSet],
   );
 
   useEffect(() => {
@@ -370,7 +383,7 @@ export function MapScreen() {
 
   const filteredPoints = useMemo(
     () =>
-      points
+      mapScopedPoints
         .filter((point) => selectedClassificationIdSet.has(point.classification_id))
         .filter((point) => !pendingOnly || isPointPendingForReview(point))
         .filter((point) => {
@@ -404,7 +417,7 @@ export function MapScreen() {
       classificationMap,
       classificationTagMap,
       pendingOnly,
-      points,
+      mapScopedPoints,
       selectedClassificationIdSet,
       selectedSpeciesIdSet,
       selectedTagIdSet,
@@ -654,6 +667,7 @@ export function MapScreen() {
             onCenter={() => focusPoint(point)}
             onPress={() => setSelectedPoint(point)}
             point={point}
+            showLifecycleStatus={canReviewInCurrentScope}
           />
         ))
       ) : (
