@@ -1,4 +1,5 @@
 import * as Linking from "expo-linking";
+import { Platform } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 
 import { withGroupLogo, withPointGroupLogo } from "@/src/lib/group-logos";
@@ -43,8 +44,51 @@ function getAuthRedirectUrl(pathname: string) {
   return Linking.createURL(pathname);
 }
 
-const POINT_MEDIA_BUCKET = "point-timeline-media";
-const POINT_MEDIA_SIGNED_URL_TTL_SECONDS = 60 * 60 * 12;
+const DEFAULT_APP_URL = "https://redeverde.expo.app";
+
+function getAppApiUrl(pathname: string) {
+  if (Platform.OS === "web") {
+    return pathname;
+  }
+
+  const baseUrl = (process.env.EXPO_PUBLIC_APP_URL?.trim() || DEFAULT_APP_URL).replace(/\/+$/, "");
+  return `${baseUrl}${pathname}`;
+}
+
+async function createAuthorizedHeaders(headers?: HeadersInit) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const result = new Headers(headers);
+
+  if (session?.access_token) {
+    result.set("Authorization", `Bearer ${session.access_token}`);
+  }
+
+  return result;
+}
+
+async function requestAppJson<T>(pathname: string, init?: RequestInit) {
+  const headers = await createAuthorizedHeaders(init?.headers);
+  const response = await fetch(getAppApiUrl(pathname), {
+    ...init,
+    headers,
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: string; details?: unknown }
+    | T
+    | null;
+
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : "Nao foi possivel concluir a operacao.";
+    throw new Error(message);
+  }
+
+  return payload as T;
+}
 
 export async function getCurrentSession() {
   const {
@@ -276,35 +320,7 @@ export async function listPointEvents(pointId: string) {
 }
 
 export async function listPointMedia(pointId: string) {
-  const { data, error } = await supabase
-    .from("point_media")
-    .select("id, point_id, point_event_id, file_url, caption, created_at")
-    .eq("point_id", pointId)
-    .is("point_event_id", null)
-    .order("created_at", { ascending: true });
-
-  const rows = requireData(data, error) as Omit<PointMediaRecord, "signed_url">[] | null;
-  const mediaRows = rows ?? [];
-
-  const signedUrls = await Promise.all(
-    mediaRows.map(async (media) => {
-      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-        .from(POINT_MEDIA_BUCKET)
-        .createSignedUrl(media.file_url, POINT_MEDIA_SIGNED_URL_TTL_SECONDS);
-
-      return {
-        fileUrl: media.file_url,
-        signedUrl: signedUrlError ? null : signedUrlData.signedUrl,
-      };
-    }),
-  );
-
-  const signedUrlMap = new Map(signedUrls.map((entry) => [entry.fileUrl, entry.signedUrl]));
-
-  return mediaRows.map((media) => ({
-    ...media,
-    signed_url: signedUrlMap.get(media.file_url) ?? null,
-  }));
+  return requestAppJson<PointMediaRecord[]>(`/api/points/media?pointId=${encodeURIComponent(pointId)}`);
 }
 
 export async function listPointEventTypes(pointClassificationId?: string | null) {
