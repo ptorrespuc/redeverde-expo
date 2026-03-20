@@ -468,6 +468,10 @@ export function MapScreen() {
   );
   const defaultSubmissionGroupId =
     submissionGroups.find((group) => group.id === groupFilter)?.id ?? submissionGroups[0]?.id ?? "";
+  const currentMapTarget = mapCenter ?? {
+    latitude: mapRegion.latitude,
+    longitude: mapRegion.longitude,
+  };
 
   function focusPoint(point: PointRecord, options?: { revealMap?: boolean }) {
     const nextRegion = createFocusedRegion(point.latitude, point.longitude);
@@ -509,11 +513,13 @@ export function MapScreen() {
       return;
     }
 
+    const nextCoordinates = coordinates ?? currentMapTarget;
+
     setDraftValues({
       groupId: defaultSubmissionGroupId,
       classificationId: classifications[0]?.id ?? "",
-      longitude: coordinates?.longitude,
-      latitude: coordinates?.latitude,
+      longitude: nextCoordinates.longitude,
+      latitude: nextCoordinates.latitude,
       isPublic:
         submissionGroups.find((group) => group.id === defaultSubmissionGroupId)?.is_public ?? false,
     });
