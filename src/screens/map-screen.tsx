@@ -657,6 +657,9 @@ export function MapScreen() {
             onPress={() => setIsFiltersOpen(true)}
             variant="ghost"
           />
+          {filterSummaryCount ? (
+            <Button compact label="Limpar filtros" onPress={clearMapFilters} variant="ghost" />
+          ) : null}
         </View>
 
         <View style={styles.mapInfoBox}>
@@ -689,6 +692,13 @@ export function MapScreen() {
               region={mapRegion}
               selectedPointId={selectedPoint?.id}
             />
+            <View pointerEvents="none" style={styles.centerMarkerOverlay}>
+              <View style={styles.centerMarker}>
+                <View style={[styles.centerMarkerLine, styles.centerMarkerLineVertical]} />
+                <View style={[styles.centerMarkerLine, styles.centerMarkerLineHorizontal]} />
+                <View style={styles.centerMarkerDot} />
+              </View>
+            </View>
           </View>
           <View style={styles.mapActions}>
             {submissionGroups.length ? (
@@ -990,6 +1000,43 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     height: 360,
     overflow: "hidden",
+    position: "relative",
+  },
+  centerMarkerOverlay: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  centerMarker: {
+    alignItems: "center",
+    height: 28,
+    justifyContent: "center",
+    width: 28,
+  },
+  centerMarkerLine: {
+    backgroundColor: colors.primaryStrong,
+    borderRadius: 999,
+    position: "absolute",
+  },
+  centerMarkerLineVertical: {
+    height: 24,
+    width: 3,
+  },
+  centerMarkerLineHorizontal: {
+    height: 3,
+    width: 24,
+  },
+  centerMarkerDot: {
+    backgroundColor: colors.background,
+    borderColor: colors.primaryStrong,
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 10,
+    width: 10,
   },
   mapActions: {
     alignItems: "center",
