@@ -1,12 +1,14 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, StyleSheet, Text, View } from "react-native";
 
 import { GroupAvatar } from "@/src/components/groups/group-avatar";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { ModalSheet } from "@/src/components/ui/modal-sheet";
+import { listPointMedia } from "@/src/lib/api";
 import { getPointDisplayStatusLabel, isPointPendingForReview } from "@/src/lib/point-display";
 import { colors, spacing } from "@/src/theme";
-import type { PointRecord } from "@/src/types/domain";
+import type { PointMediaRecord, PointRecord } from "@/src/types/domain";
 
 interface PointActionModalProps {
   point: PointRecord | null;
@@ -27,11 +29,43 @@ export function PointActionModal({
   onApprove,
   onReject,
 }: PointActionModalProps) {
+  const [pointMedia, setPointMedia] = useState<PointMediaRecord[]>([]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadMedia() {
+      if (!point?.id || !open) {
+        return;
+      }
+
+      try {
+        const media = await listPointMedia(point.id);
+
+        if (!ignore) {
+          setPointMedia(media);
+        }
+      } catch {
+        if (!ignore) {
+          setPointMedia([]);
+        }
+      }
+    }
+
+    setPointMedia([]);
+    void loadMedia();
+
+    return () => {
+      ignore = true;
+    };
+  }, [open, point?.id]);
+
   if (!point) {
     return null;
   }
 
   const canReview = point.viewer_can_approve && isPointPendingForReview(point);
+  const firstPointPhoto = pointMedia[0] ?? null;
 
   return (
     <ModalSheet onClose={onClose} open={open} title="Ponto selecionado">
@@ -63,6 +97,19 @@ export function PointActionModal({
       </View>
 
       {point.description ? <Text style={styles.description}>{point.description}</Text> : null}
+
+      {firstPointPhoto?.signed_url ? (
+        <View style={styles.photoBlock}>
+          <Image
+            resizeMode="cover"
+            source={{ uri: firstPointPhoto.signed_url }}
+            style={styles.photoImage}
+          />
+          <Text style={styles.photoCaption}>
+            {firstPointPhoto.caption || "Foto principal do ponto"}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.coordinates}>
         <Text style={styles.coordinateText}>Lat {point.latitude.toFixed(6)}</Text>
@@ -117,6 +164,20 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
+  },
+  photoBlock: {
+    gap: spacing.sm,
+  },
+  photoImage: {
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: 16,
+    height: 180,
+    width: "100%",
+  },
+  photoCaption: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   coordinates: {
     flexDirection: "row",

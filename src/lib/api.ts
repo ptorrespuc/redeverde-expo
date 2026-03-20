@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 
 import { withGroupLogo, withPointGroupLogo } from "@/src/lib/group-logos";
-import { attachPointTagsToPoint, attachPointTagsToPoints, loadPointTags } from "@/src/lib/point-tags";
+import { attachPointTagsToPoints, loadPointTags } from "@/src/lib/point-tags";
 import { supabase } from "@/src/lib/supabase";
 import type {
   CreatePointEventPayload,
@@ -295,16 +295,7 @@ export async function listWorkspacePoints(filters?: {
 }
 
 export async function getPoint(pointId: string) {
-  const { data, error } = await supabase.rpc("get_point", {
-    p_point_id: pointId,
-  });
-
-  const point = getSingleRow(
-    requireData(data, error) as PointDetailRecord[] | null,
-    "Ponto nao encontrado.",
-  );
-
-  return withPointGroupLogo(await attachPointTagsToPoint(supabase, point));
+  return requestAppJson<PointDetailRecord>(`/api/points/detail?pointId=${encodeURIComponent(pointId)}`);
 }
 
 export async function listPointEvents(pointId: string) {
