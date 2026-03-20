@@ -53,16 +53,34 @@ export function PointDetailScreen() {
 
     try {
       const nextPoint = await getPoint(id);
-      const [nextEvents, nextEventTypes, nextPointMedia] = await Promise.all([
+      setPoint(nextPoint);
+
+      const [eventsResult, eventTypesResult, pointMediaResult] = await Promise.allSettled([
         listPointEvents(id),
         listPointEventTypes(nextPoint.classification_id),
         listPointMedia(id),
       ]);
-      setPoint(nextPoint);
-      setEvents(nextEvents);
-      setEventTypeOptions(nextEventTypes);
-      setPointMedia(nextPointMedia);
+
+      setEvents(eventsResult.status === "fulfilled" ? eventsResult.value : []);
+      setEventTypeOptions(eventTypesResult.status === "fulfilled" ? eventTypesResult.value : []);
+      setPointMedia(pointMediaResult.status === "fulfilled" ? pointMediaResult.value : []);
+
+      if (
+        eventsResult.status === "rejected" ||
+        eventTypesResult.status === "rejected" ||
+        pointMediaResult.status === "rejected"
+      ) {
+        Toast.show({
+          type: "info",
+          text1: "Ponto carregado parcialmente",
+          text2: "Algumas informacoes complementares nao puderam ser carregadas agora.",
+        });
+      }
     } catch (error) {
+      setPoint(null);
+      setEvents([]);
+      setEventTypeOptions([]);
+      setPointMedia([]);
       Toast.show({
         type: "error",
         text1: "Falha ao abrir ponto",
