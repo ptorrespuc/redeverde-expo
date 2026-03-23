@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
@@ -33,6 +33,7 @@ export function PointsScreen() {
   const [pendingOnly, setPendingOnly] = useState(false);
   const [mineOnly, setMineOnly] = useState(defaultMineOnly);
   const [isLoading, setIsLoading] = useState(false);
+  const refreshRequestRef = useRef(0);
 
   useEffect(() => {
     let ignore = false;
@@ -64,12 +65,18 @@ export function PointsScreen() {
   }, [userContext?.preferred_group?.id, visibleGroups]);
 
   const refreshPoints = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
+
     if (!isAuthenticated) {
-      setPoints([]);
+      if (requestId === refreshRequestRef.current) {
+        setPoints([]);
+      }
       return;
     }
 
-    setIsLoading(true);
+    if (requestId === refreshRequestRef.current) {
+      setIsLoading(true);
+    }
 
     try {
       const nextPoints = await listWorkspacePoints({
@@ -78,15 +85,22 @@ export function PointsScreen() {
         pendingOnly,
         mineOnly,
       });
-      setPoints(nextPoints);
+
+      if (requestId === refreshRequestRef.current) {
+        setPoints(nextPoints);
+      }
     } catch (error) {
-      Toast.show({
-        type: "error",
-        text1: "Falha ao carregar workspace",
-        text2: error instanceof Error ? error.message : "Tente novamente.",
-      });
+      if (requestId === refreshRequestRef.current) {
+        Toast.show({
+          type: "error",
+          text1: "Falha ao carregar workspace",
+          text2: error instanceof Error ? error.message : "Tente novamente.",
+        });
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === refreshRequestRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [classificationFilter, groupFilter, isAuthenticated, mineOnly, pendingOnly]);
 
@@ -98,8 +112,10 @@ export function PointsScreen() {
     void refreshPoints();
   }, [isReady, refreshPoints]);
 
-  const selectedGroup =
-    visibleGroups.find((group) => group.id === groupFilter) ?? userContext?.preferred_group ?? null;
+  const selectedGroup = groupFilter === "all"
+    ? null
+    : visibleGroups.find((group) => group.id === groupFilter) ?? null;
+  const currentGroupTitle = selectedGroup?.name ?? "Todos os grupos visiveis";
   const canCreateForSelectedGroup =
     selectedGroup != null
       ? submissionGroups.some((group) => group.id === selectedGroup.id)
@@ -172,7 +188,7 @@ export function PointsScreen() {
                 <GroupAvatar logoUrl={selectedGroup.logo_url} name={selectedGroup.name} size={32} />
               ) : null}
               <View style={styles.groupHeaderCopy}>
-                <Text style={styles.title}>{selectedGroup?.name ?? "Todos os grupos visiveis"}</Text>
+                <Text style={styles.title}>{currentGroupTitle}</Text>
                 <Text style={styles.description}>
                   Consulte pendencias, seus registros e os pontos do escopo atual.
                 </Text>

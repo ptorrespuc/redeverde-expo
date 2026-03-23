@@ -118,6 +118,7 @@ export function MapScreen() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [draftValues, setDraftValues] = useState<Partial<CreatePointPayload>>({});
   const [mapSectionY, setMapSectionY] = useState(0);
+  const refreshRequestRef = useRef(0);
 
   const centerOnCurrentLocation = useCallback(
     async (animate = true, notifyOnError = true) => {
@@ -219,22 +220,33 @@ export function MapScreen() {
 
   const refreshPoints = useCallback(
     async (nextGroupId = groupFilter) => {
-      setIsLoading(true);
+      const requestId = ++refreshRequestRef.current;
+
+      if (requestId === refreshRequestRef.current) {
+        setIsLoading(true);
+      }
 
       try {
         const nextPoints = await listPoints({
           groupId: nextGroupId === "all" ? null : nextGroupId,
         });
-        setPoints(nextPoints);
-        setSelectedPoint((current) => nextPoints.find((point) => point.id === current?.id) ?? null);
+
+        if (requestId === refreshRequestRef.current) {
+          setPoints(nextPoints);
+          setSelectedPoint((current) => nextPoints.find((point) => point.id === current?.id) ?? null);
+        }
       } catch (error) {
-        Toast.show({
-          type: "error",
-          text1: "Falha ao carregar pontos",
-          text2: error instanceof Error ? error.message : "Tente novamente.",
-        });
+        if (requestId === refreshRequestRef.current) {
+          Toast.show({
+            type: "error",
+            text1: "Falha ao carregar pontos",
+            text2: error instanceof Error ? error.message : "Tente novamente.",
+          });
+        }
       } finally {
-        setIsLoading(false);
+        if (requestId === refreshRequestRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [groupFilter],

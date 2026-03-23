@@ -2,8 +2,8 @@ import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 
-import { withGroupLogo, withPointGroupLogo } from "@/src/lib/group-logos";
-import { attachPointTagsToPoints, loadPointTags } from "@/src/lib/point-tags";
+import { withGroupLogo } from "@/src/lib/group-logos";
+import { loadPointTags } from "@/src/lib/point-tags";
 import { supabase } from "@/src/lib/supabase";
 import type {
   CreatePointEventPayload,
@@ -287,16 +287,27 @@ export async function listWorkspacePoints(filters?: {
   const classificationId =
     filters?.classificationId ??
     (filters?.classificationIds?.length === 1 ? filters.classificationIds[0] : null);
-  const { data, error } = await supabase.rpc("list_workspace_points", {
-    p_point_classification_id: classificationId || null,
-    p_group_id: filters?.groupId || null,
-    p_pending_only: filters?.pendingOnly ?? false,
-    p_only_mine: filters?.mineOnly ?? false,
-  });
+  const searchParams = new URLSearchParams();
 
-  const rows = requireData(data, error) as PointRecord[] | null;
-  const pointsWithTags = await attachPointTagsToPoints(supabase, rows ?? []);
-  return pointsWithTags.map(withPointGroupLogo);
+  if (classificationId) {
+    searchParams.set("classificationId", classificationId);
+  }
+
+  if (filters?.groupId) {
+    searchParams.set("groupId", filters.groupId);
+  }
+
+  if (filters?.pendingOnly) {
+    searchParams.set("pendingOnly", "true");
+  }
+
+  if (filters?.mineOnly) {
+    searchParams.set("mineOnly", "true");
+  }
+
+  return requestAppJson<PointRecord[]>(
+    `/api/points/workspace${searchParams.size ? `?${searchParams.toString()}` : ""}`,
+  );
 }
 
 export async function getPoint(pointId: string) {
