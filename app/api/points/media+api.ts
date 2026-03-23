@@ -1,40 +1,12 @@
-import { canViewerSeePoint } from "@/src/lib/point-visibility";
 import { jsonError } from "@/src/server/http";
 import {
   createAdminSupabaseClient,
   createRequestSupabaseClient,
-  getAccessTokenFromRequest,
 } from "@/src/server/supabase";
 import type { PointDetailRecord, PointMediaRecord } from "@/src/types/domain";
 
 const POINT_MEDIA_BUCKET = "point-timeline-media";
 const POINT_MEDIA_SIGNED_URL_TTL_SECONDS = 60 * 60 * 12;
-
-async function loadViewerProfileId(request: Request) {
-  const accessToken = getAccessTokenFromRequest(request);
-
-  if (!accessToken) {
-    return null;
-  }
-
-  const supabase = createRequestSupabaseClient(request);
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser(accessToken);
-
-  if (userError || !user) {
-    return null;
-  }
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("id")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  return profile?.id ?? null;
-}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -45,12 +17,9 @@ export async function GET(request: Request) {
   }
 
   const requestSupabase = createRequestSupabaseClient(request);
-  const [{ data: pointData, error: pointError }, viewerProfileId] = await Promise.all([
-    requestSupabase.rpc("get_point", {
-      p_point_id: pointId,
-    }),
-    loadViewerProfileId(request),
-  ]);
+  const { data: pointData, error: pointError } = await requestSupabase.rpc("get_point", {
+    p_point_id: pointId,
+  });
 
   if (pointError) {
     return jsonError(pointError.message, 400);
@@ -58,7 +27,7 @@ export async function GET(request: Request) {
 
   const point = ((pointData ?? []) as PointDetailRecord[])[0] ?? null;
 
-  if (!point || !canViewerSeePoint(point, viewerProfileId)) {
+  if (!point) {
     return jsonError("Ponto nao encontrado.", 404);
   }
 

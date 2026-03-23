@@ -295,9 +295,42 @@ export function MapScreen() {
     () => activeClassifications.filter((classification) => classification.requires_species),
     [activeClassifications],
   );
+  const allSpeciesForCurrentGroup = useMemo(
+    () =>
+      classifications.filter(
+        (classification) =>
+          availableClassificationIds.includes(classification.id) && classification.requires_species,
+      ),
+    [availableClassificationIds, classifications],
+  );
   const speciesCatalogMap = useMemo(
     () => new Map(speciesCatalog.map((species) => [species.id, species])),
     [speciesCatalog],
+  );
+  const allAvailableSpecies = useMemo(
+    () => {
+      if (!allSpeciesForCurrentGroup.length) {
+        return [];
+      }
+
+      const speciesIds = new Set<string>();
+
+      for (const point of mapScopedPoints) {
+        const classification = classifications.find((item) => item.id === point.classification_id);
+
+        if (!classification?.requires_species || !point.species_id) {
+          continue;
+        }
+
+        speciesIds.add(point.species_id);
+      }
+
+      return Array.from(speciesIds)
+        .map((speciesId) => speciesCatalogMap.get(speciesId))
+        .filter((species): species is NonNullable<typeof species> => Boolean(species))
+        .sort((left, right) => left.common_name.localeCompare(right.common_name, "pt-BR"));
+    },
+    [allSpeciesForCurrentGroup.length, classifications, mapScopedPoints, speciesCatalogMap],
   );
   const availableSpecies = useMemo(
     () => {
@@ -351,6 +384,22 @@ export function MapScreen() {
       );
     },
     [mapScopedPoints, selectedClassificationIdSet],
+  );
+  const allAvailableTags = useMemo(
+    () => {
+      const tagsById = new Map<string, PointTagRecord>();
+
+      for (const point of mapScopedPoints) {
+        for (const tag of point.tags ?? []) {
+          tagsById.set(tag.id, tag);
+        }
+      }
+
+      return Array.from(tagsById.values()).sort((left, right) =>
+        left.name.localeCompare(right.name, "pt-BR"),
+      );
+    },
+    [mapScopedPoints],
   );
 
   useEffect(() => {
@@ -602,8 +651,8 @@ export function MapScreen() {
 
   function clearMapFilters() {
     setSelectedClassificationIds(availableClassificationIds);
-    setSelectedSpeciesIds(availableSpecies.map((species) => species.id));
-    setSelectedTagIds(availableTags.map((tag) => tag.id));
+    setSelectedSpeciesIds(allAvailableSpecies.map((species) => species.id));
+    setSelectedTagIds(allAvailableTags.map((tag) => tag.id));
     setPendingOnly(false);
     setAddressQuery("");
   }

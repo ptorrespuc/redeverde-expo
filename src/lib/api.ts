@@ -262,14 +262,19 @@ export async function listPoints(filters?: {
   const classificationId =
     filters?.classificationId ??
     (filters?.classificationIds?.length === 1 ? filters.classificationIds[0] : null);
-  const { data, error } = await supabase.rpc("list_points", {
-    p_point_classification_id: classificationId || null,
-    p_group_id: filters?.groupId || null,
-  });
+  const searchParams = new URLSearchParams();
 
-  const rows = requireData(data, error) as PointRecord[] | null;
-  const pointsWithTags = await attachPointTagsToPoints(supabase, rows ?? []);
-  return pointsWithTags.map(withPointGroupLogo);
+  if (classificationId) {
+    searchParams.set("classificationId", classificationId);
+  }
+
+  if (filters?.groupId) {
+    searchParams.set("groupId", filters.groupId);
+  }
+
+  return requestAppJson<PointRecord[]>(
+    `/api/points${searchParams.size ? `?${searchParams.toString()}` : ""}`,
+  );
 }
 
 export async function listWorkspacePoints(filters?: {
