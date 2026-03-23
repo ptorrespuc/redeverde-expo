@@ -59,6 +59,24 @@ function syncSelection(current: string[], availableIds: string[]) {
   return preserved;
 }
 
+function hasExactSelection(selectedIds: string[], availableIds: string[]) {
+  if (!availableIds.length) {
+    return selectedIds.length === 0;
+  }
+
+  if (selectedIds.length !== availableIds.length) {
+    return false;
+  }
+
+  const selectedIdSet = new Set(selectedIds);
+
+  if (selectedIdSet.size !== availableIds.length) {
+    return false;
+  }
+
+  return availableIds.every((item) => selectedIdSet.has(item));
+}
+
 function FilterChip({
   label,
   selected,
@@ -459,9 +477,24 @@ export function MapScreen() {
 
     return entries;
   }, [availableTags]);
-  const speciesFilterActive =
-    availableSpecies.length > 0 && selectedSpeciesIds.length !== availableSpecies.length;
-  const tagFilterActive = availableTags.length > 0 && selectedTagIds.length !== availableTags.length;
+  const classificationFilterActive = useMemo(
+    () => !hasExactSelection(selectedClassificationIds, availableClassificationIds),
+    [availableClassificationIds, selectedClassificationIds],
+  );
+  const speciesFilterActive = useMemo(
+    () => !hasExactSelection(
+      selectedSpeciesIds,
+      availableSpecies.map((species) => species.id),
+    ),
+    [availableSpecies, selectedSpeciesIds],
+  );
+  const tagFilterActive = useMemo(
+    () => !hasExactSelection(
+      selectedTagIds,
+      availableTags.map((tag) => tag.id),
+    ),
+    [availableTags, selectedTagIds],
+  );
 
   const filteredPoints = useMemo(
     () =>
@@ -692,7 +725,7 @@ export function MapScreen() {
   const groupActionLabel = selectedGroup || isAllGroupsSelected ? "Trocar grupo" : "Escolher grupo";
   const filterSummaryCount =
     Number(pendingOnly) +
-    Number(selectedClassificationIds.length !== availableClassificationIds.length) +
+    Number(classificationFilterActive) +
     Number(speciesFilterActive) +
     Number(tagFilterActive);
 
