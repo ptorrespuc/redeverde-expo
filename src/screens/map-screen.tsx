@@ -118,6 +118,7 @@ export function MapScreen() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [draftValues, setDraftValues] = useState<Partial<CreatePointPayload>>({});
   const [mapSectionY, setMapSectionY] = useState(0);
+  const [clearFiltersToken, setClearFiltersToken] = useState(0);
   const refreshRequestRef = useRef(0);
 
   const centerOnCurrentLocation = useCallback(
@@ -432,6 +433,15 @@ export function MapScreen() {
     );
   }, [availableTags]);
 
+  useEffect(() => {
+    if (!clearFiltersToken) {
+      return;
+    }
+
+    setSelectedSpeciesIds(allAvailableSpecies.map((species) => species.id));
+    setSelectedTagIds(allAvailableTags.map((tag) => tag.id));
+  }, [allAvailableSpecies, allAvailableTags, clearFiltersToken]);
+
   const selectedSpeciesIdSet = useMemo(() => new Set(selectedSpeciesIds), [selectedSpeciesIds]);
   const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
   const classificationMap = useMemo(
@@ -662,11 +672,16 @@ export function MapScreen() {
   }
 
   function clearMapFilters() {
-    setSelectedClassificationIds(availableClassificationIds);
-    setSelectedSpeciesIds(allAvailableSpecies.map((species) => species.id));
-    setSelectedTagIds(allAvailableTags.map((tag) => tag.id));
+    const nextClassificationIds = [...availableClassificationIds];
+    const nextSpeciesIds = allAvailableSpecies.map((species) => species.id);
+    const nextTagIds = allAvailableTags.map((tag) => tag.id);
+
+    setSelectedClassificationIds(nextClassificationIds);
+    setSelectedSpeciesIds(nextSpeciesIds);
+    setSelectedTagIds(nextTagIds);
     setPendingOnly(false);
     setAddressQuery("");
+    setClearFiltersToken((current) => current + 1);
   }
 
   if (!isReady) {
@@ -676,7 +691,6 @@ export function MapScreen() {
   const currentGroupTitle = currentGroupSummary?.name ?? "Todos os grupos visíveis";
   const groupActionLabel = selectedGroup || isAllGroupsSelected ? "Trocar grupo" : "Escolher grupo";
   const filterSummaryCount =
-    Number(groupFilter !== "all") +
     Number(pendingOnly) +
     Number(selectedClassificationIds.length !== availableClassificationIds.length) +
     Number(speciesFilterActive) +
