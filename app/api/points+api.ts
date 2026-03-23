@@ -22,7 +22,10 @@ export async function GET(request: Request) {
     return jsonError(error.message, 400);
   }
 
-  const pointsWithTags = await attachPointTagsToPoints(supabase, ((data ?? []) as PointRecord[]) ?? []);
+  const visiblePoints = (((data ?? []) as PointRecord[]) ?? []).filter(
+    (point) => point.status !== "archived",
+  );
+  const pointsWithTags = await attachPointTagsToPoints(supabase, visiblePoints);
 
   return Response.json(pointsWithTags.map(withPointGroupLogo));
 }

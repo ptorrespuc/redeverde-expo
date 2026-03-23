@@ -2,7 +2,7 @@ import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import type { Session } from "@supabase/supabase-js";
 
-import { withGroupLogo } from "@/src/lib/group-logos";
+import { withGroupLogo, withPointGroupLogo } from "@/src/lib/group-logos";
 import { loadPointTags } from "@/src/lib/point-tags";
 import { supabase } from "@/src/lib/supabase";
 import type {
