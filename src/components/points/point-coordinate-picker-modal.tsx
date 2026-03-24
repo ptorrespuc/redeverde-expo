@@ -29,13 +29,14 @@ const DEFAULT_REGION: MapRegion = {
   latitudeDelta: 0.008,
   longitudeDelta: 0.008,
 };
+const FOCUSED_DELTA = 0.0015;
 
 function createFocusedRegion(latitude: number, longitude: number): MapRegion {
   return {
     latitude,
     longitude,
-    latitudeDelta: 0.004,
-    longitudeDelta: 0.004,
+    latitudeDelta: FOCUSED_DELTA,
+    longitudeDelta: FOCUSED_DELTA,
   };
 }
 
