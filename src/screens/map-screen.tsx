@@ -34,6 +34,8 @@ const DEFAULT_REGION: MapRegion = {
   latitudeDelta: 0.008,
   longitudeDelta: 0.008,
 };
+const POINT_FOCUS_DELTA = 0.0015;
+const POINT_FOCUS_REVEAL_DELAY_MS = 650;
 
 function createFocusedRegion(latitude: number, longitude: number): MapRegion {
   return {
@@ -41,6 +43,15 @@ function createFocusedRegion(latitude: number, longitude: number): MapRegion {
     longitude,
     latitudeDelta: 0.004,
     longitudeDelta: 0.004,
+  };
+}
+
+function createPointFocusRegion(latitude: number, longitude: number): MapRegion {
+  return {
+    latitude,
+    longitude,
+    latitudeDelta: POINT_FOCUS_DELTA,
+    longitudeDelta: POINT_FOCUS_DELTA,
   };
 }
 
@@ -578,7 +589,7 @@ export function MapScreen() {
   };
 
   function focusPoint(point: PointRecord, options?: { revealMap?: boolean }) {
-    const nextRegion = createFocusedRegion(point.latitude, point.longitude);
+    const nextRegion = createPointFocusRegion(point.latitude, point.longitude);
     setMapRegion(nextRegion);
     setMapCenter({ latitude: point.latitude, longitude: point.longitude });
     mapRef.current?.animateToRegion(nextRegion, 450);
@@ -599,9 +610,10 @@ export function MapScreen() {
       });
 
       focusSelectionTimeoutRef.current = setTimeout(() => {
+        mapRef.current?.animateToRegion(nextRegion, 450);
         setSelectedPoint(point);
         focusSelectionTimeoutRef.current = null;
-      }, 420);
+      }, POINT_FOCUS_REVEAL_DELAY_MS);
       return;
     }
 
