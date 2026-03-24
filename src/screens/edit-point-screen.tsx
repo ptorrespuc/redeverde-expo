@@ -145,6 +145,7 @@ export function EditPointScreen() {
             longitude: point.longitude,
             latitude: point.latitude,
           }}
+          isEditing
           onCancel={() => router.back()}
           onSubmit={handleSubmit}
           speciesCatalog={speciesCatalog}

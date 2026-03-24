@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 
 import { listPointTags } from "@/src/lib/api";
+import { PointCoordinatePickerModal } from "@/src/components/points/point-coordinate-picker-modal";
 import { Button } from "@/src/components/ui/button";
 import {
   Field,
@@ -27,6 +28,7 @@ interface PointFormProps {
   speciesCatalog: SpeciesRecord[];
   initialValues?: Partial<CreatePointPayload>;
   submitLabel?: string;
+  isEditing?: boolean;
   onCancel?: () => void;
   onSubmit: (payload: CreatePointPayload) => Promise<void>;
 }
@@ -73,6 +75,7 @@ export function PointForm({
   speciesCatalog,
   initialValues,
   submitLabel = "Salvar ponto",
+  isEditing = false,
   onCancel,
   onSubmit,
 }: PointFormProps) {
@@ -84,12 +87,18 @@ export function PointForm({
   const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCoordinateEditor, setShowCoordinateEditor] = useState(
+    !Boolean(initialValues?.longitude != null && initialValues?.latitude != null),
+  );
+  const [showCoordinatePicker, setShowCoordinatePicker] = useState(false);
 
   useEffect(() => {
     const nextState = buildInitialState(groups, classifications, initialValues);
     setFormState(nextState);
     const nextSpecies = speciesCatalog.find((species) => species.id === nextState.speciesId);
     setSpeciesSearch(nextSpecies?.display_name ?? "");
+    setShowCoordinateEditor(!(nextState.longitude && nextState.latitude));
+    setShowCoordinatePicker(false);
   }, [classifications, groups, initialValues, speciesCatalog]);
 
   useEffect(() => {
@@ -152,6 +161,7 @@ export function PointForm({
   const canConfigureVisibility = selectedGroup?.viewer_can_manage ?? false;
   const showGroupPicker = groups.length > 1;
   const requiresSpecies = selectedClassification?.requires_species ?? false;
+  const hasCoordinates = Boolean(formState.longitude.trim() && formState.latitude.trim());
   const filteredSpecies = useMemo(() => {
     const query = speciesSearch.trim().toLowerCase();
 
@@ -221,6 +231,16 @@ export function PointForm({
           : [...current.tagIds, tagId],
       };
     });
+  }
+
+  function applyCoordinatesFromMap(coordinates: { latitude: number; longitude: number }) {
+    setFormState((current) => ({
+      ...current,
+      latitude: coordinates.latitude.toString(),
+      longitude: coordinates.longitude.toString(),
+    }));
+    setShowCoordinateEditor(false);
+    setShowCoordinatePicker(false);
   }
 
   async function handleSubmit() {
@@ -426,23 +446,75 @@ export function PointForm({
       )}
 
       <View style={styles.coordinateRow}>
-        <Field style={styles.coordinateField}>
-          <FieldLabel>Longitude</FieldLabel>
-          <FieldInput
-            keyboardType="numeric"
-            onChangeText={(value) => setField("longitude", value)}
-            value={formState.longitude}
-          />
-        </Field>
-        <Field style={styles.coordinateField}>
-          <FieldLabel>Latitude</FieldLabel>
-          <FieldInput
-            keyboardType="numeric"
-            onChangeText={(value) => setField("latitude", value)}
-            value={formState.latitude}
-          />
-        </Field>
+        {isEditing && hasCoordinates && !showCoordinateEditor ? (
+          <View style={styles.coordinateSummaryCard}>
+            <View style={styles.coordinateSummaryCopy}>
+              <Text style={styles.coordinateSummaryTitle}>Posicao definida no mapa</Text>
+              <Text style={styles.coordinateSummaryText}>
+                Latitude {Number(formState.latitude).toFixed(6)} | Longitude{" "}
+                {Number(formState.longitude).toFixed(6)}
+              </Text>
+            </View>
+            <View style={styles.coordinateSummaryActions}>
+              <Button
+                compact
+                label="Reposicionar no mapa"
+                onPress={() => setShowCoordinatePicker(true)}
+                variant="ghost"
+              />
+              <Button
+                compact
+                label="Editar coordenadas"
+                onPress={() => setShowCoordinateEditor(true)}
+                variant="ghost"
+              />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.coordinateFieldsRow}>
+            <Field style={styles.coordinateField}>
+              <FieldLabel>Longitude</FieldLabel>
+              <FieldInput
+                keyboardType="numeric"
+                onChangeText={(value) => setField("longitude", value)}
+                value={formState.longitude}
+              />
+              <FieldHint>Use as coordenadas do mapa ou ajuste manualmente.</FieldHint>
+            </Field>
+            <Field style={styles.coordinateField}>
+              <FieldLabel>Latitude</FieldLabel>
+              <FieldInput
+                keyboardType="numeric"
+                onChangeText={(value) => setField("latitude", value)}
+                value={formState.latitude}
+              />
+              <FieldHint>Valores em graus decimais no padrao WGS84.</FieldHint>
+            </Field>
+          </View>
+        )}
       </View>
+
+      {(!isEditing || showCoordinateEditor) && (hasCoordinates || isEditing) ? (
+        <View style={styles.coordinateActions}>
+          {isEditing ? (
+            <Button
+              compact
+              label="Reposicionar no mapa"
+              onPress={() => setShowCoordinatePicker(true)}
+              variant="ghost"
+            />
+          ) : null}
+          {isEditing && hasCoordinates ? (
+            <Button
+              compact
+              disabled={!hasCoordinates}
+              label="Manter so a posicao do mapa"
+              onPress={() => setShowCoordinateEditor(false)}
+              variant="ghost"
+            />
+          ) : null}
+        </View>
+      ) : null}
 
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
@@ -454,6 +526,22 @@ export function PointForm({
         />
         {onCancel ? <Button label="Cancelar" onPress={onCancel} variant="ghost" /> : null}
       </View>
+
+      {isEditing ? (
+        <PointCoordinatePickerModal
+          initialCoordinates={
+            hasCoordinates
+              ? {
+                  latitude: Number(formState.latitude),
+                  longitude: Number(formState.longitude),
+                }
+              : null
+          }
+          onClose={() => setShowCoordinatePicker(false)}
+          onConfirm={applyCoordinatesFromMap}
+          open={showCoordinatePicker}
+        />
+      ) : null}
     </ScrollView>
   );
 }
@@ -525,11 +613,45 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   coordinateRow: {
-    flexDirection: "row",
     gap: spacing.md,
   },
   coordinateField: {
     flex: 1,
+  },
+  coordinateFieldsRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  coordinateSummaryCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  coordinateSummaryCopy: {
+    gap: 4,
+  },
+  coordinateSummaryTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  coordinateSummaryText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  coordinateSummaryActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  coordinateActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   error: {
     color: colors.danger,
