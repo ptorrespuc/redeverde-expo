@@ -1,6 +1,6 @@
 import { requireAdminUserContext } from "@/src/server/admin";
 import { jsonError } from "@/src/server/http";
-import { createRequestSupabaseClient } from "@/src/server/supabase";
+import { createAdminSupabaseClient, createRequestSupabaseClient } from "@/src/server/supabase";
 import type { SpeciesRecord } from "@/src/types/domain";
 
 export async function POST(request: Request) {
@@ -109,4 +109,62 @@ export async function PATCH(request: Request) {
   }
 
   return Response.json(species);
+}
+
+export async function DELETE(request: Request) {
+  const auth = await requireAdminUserContext(request);
+
+  if (!auth.context) {
+    return jsonError(auth.error, auth.status);
+  }
+
+  if (!auth.context.is_super_admin) {
+    return jsonError("Apenas superadministradores podem excluir especies.", 403);
+  }
+
+  const id = new URL(request.url).searchParams.get("id");
+
+  if (!id) {
+    return jsonError("Especie nao informada.", 400);
+  }
+
+  const supabase = createRequestSupabaseClient(request);
+  const adminSupabase = createAdminSupabaseClient();
+  const { count, error: pointsError } = await adminSupabase
+    .from("points")
+    .select("id", { count: "exact", head: true })
+    .eq("species_id", id);
+
+  if (pointsError) {
+    return jsonError(pointsError.message, 400);
+  }
+
+  if (count) {
+    const { error: logicalDeleteError } = await supabase
+      .from("species")
+      .update({ is_active: false })
+      .eq("id", id);
+
+    if (logicalDeleteError) {
+      return jsonError(logicalDeleteError.message, 400);
+    }
+
+    return Response.json({ mode: "logical" });
+  }
+
+  const { data: deletedRows, error: deleteError } = await supabase
+    .from("species")
+    .delete()
+    .eq("id", id)
+    .select("id");
+
+  if (deleteError) {
+    return jsonError(deleteError.message, 400);
+  }
+
+  if (!deletedRows?.length) {
+    return jsonError("Especie nao encontrada.", 404);
+  }
+
+  return Response.json({ mode: "physical" });
 }

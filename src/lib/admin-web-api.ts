@@ -58,21 +58,70 @@ async function requestJson<T>(path: string, init?: RequestInit) {
   return payload as T;
 }
 
+function buildGroupFormData(
+  payload: CreateGroupPayload | UpdateGroupPayload,
+  includeOptional = false,
+) {
+  const formData = new FormData();
+
+  if (typeof payload.name === "string") {
+    formData.append("name", payload.name);
+  }
+
+  if (typeof payload.code === "string") {
+    formData.append("code", payload.code);
+  }
+
+  if (typeof payload.isPublic === "boolean") {
+    formData.append("isPublic", String(payload.isPublic));
+  } else if (includeOptional) {
+    formData.append("isPublic", "false");
+  }
+
+  if (typeof payload.acceptsPointCollaboration === "boolean") {
+    formData.append("acceptsPointCollaboration", String(payload.acceptsPointCollaboration));
+  } else if (includeOptional) {
+    formData.append("acceptsPointCollaboration", "false");
+  }
+
+  if (typeof payload.maxPendingPointsPerCollaborator === "number") {
+    formData.append(
+      "maxPendingPointsPerCollaborator",
+      String(payload.maxPendingPointsPerCollaborator),
+    );
+  }
+
+  if (payload.logo instanceof File) {
+    formData.append("logo", payload.logo);
+  }
+
+  if ("removeLogo" in payload && typeof payload.removeLogo === "boolean") {
+    formData.append("removeLogo", String(payload.removeLogo));
+  }
+
+  return formData;
+}
+
 export function loadAdminBootstrap() {
   return requestJson<AdminBootstrapResponse>("/api/admin/bootstrap");
 }
 
 export function createAdminGroup(payload: CreateGroupPayload) {
+  const body = payload.logo instanceof File ? buildGroupFormData(payload, true) : JSON.stringify(payload);
+
   return requestJson("/api/admin/groups", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body,
   });
 }
 
 export function updateAdminGroup(groupId: string, payload: UpdateGroupPayload) {
+  const shouldUseFormData =
+    payload.logo instanceof File || typeof payload.removeLogo === "boolean";
+
   return requestJson(`/api/admin/groups?id=${encodeURIComponent(groupId)}`, {
     method: "PATCH",
-    body: JSON.stringify(payload),
+    body: shouldUseFormData ? buildGroupFormData(payload) : JSON.stringify(payload),
   });
 }
 
@@ -147,6 +196,12 @@ export function updateAdminSpecies(speciesId: string, payload: UpdateSpeciesPayl
   });
 }
 
+export function deleteAdminSpecies(speciesId: string) {
+  return requestJson(`/api/admin/species?id=${encodeURIComponent(speciesId)}`, {
+    method: "DELETE",
+  });
+}
+
 export function createAdminPointEventType(payload: CreatePointEventTypePayload) {
   return requestJson("/api/admin/point-event-types", {
     method: "POST",
@@ -161,5 +216,11 @@ export function updateAdminPointEventType(
   return requestJson(`/api/admin/point-event-types?id=${encodeURIComponent(pointEventTypeId)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+export function deleteAdminPointEventType(pointEventTypeId: string) {
+  return requestJson(`/api/admin/point-event-types?id=${encodeURIComponent(pointEventTypeId)}`, {
+    method: "DELETE",
   });
 }

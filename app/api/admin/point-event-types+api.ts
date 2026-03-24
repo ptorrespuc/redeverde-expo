@@ -1,6 +1,6 @@
 import { requireAdminUserContext } from "@/src/server/admin";
 import { jsonError } from "@/src/server/http";
-import { createRequestSupabaseClient } from "@/src/server/supabase";
+import { createAdminSupabaseClient, createRequestSupabaseClient } from "@/src/server/supabase";
 import type { PointEventTypeRecord } from "@/src/types/domain";
 
 export async function POST(request: Request) {
@@ -105,4 +105,56 @@ export async function PATCH(request: Request) {
   }
 
   return Response.json(pointEventType);
+}
+
+export async function DELETE(request: Request) {
+  const auth = await requireAdminUserContext(request);
+
+  if (!auth.context) {
+    return jsonError(auth.error, auth.status);
+  }
+
+  if (!auth.context.is_super_admin) {
+    return jsonError("Apenas superusuarios podem excluir tipos de evento.", 403);
+  }
+
+  const id = new URL(request.url).searchParams.get("id");
+
+  if (!id) {
+    return jsonError("Tipo de evento nao informado.", 400);
+  }
+
+  const adminSupabase = createAdminSupabaseClient();
+  const { count, error: eventsError } = await adminSupabase
+    .from("point_events")
+    .select("id", { count: "exact", head: true })
+    .eq("point_event_type_id", id);
+
+  if (eventsError) {
+    return jsonError(eventsError.message, 400);
+  }
+
+  if (count) {
+    return jsonError(
+      "Nao e possivel excluir este tipo de evento porque ele ja foi usado em registros da timeline.",
+      400,
+    );
+  }
+
+  const supabase = createRequestSupabaseClient(request);
+  const { data: deletedRows, error: deleteError } = await supabase
+    .from("point_event_types")
+    .delete()
+    .eq("id", id)
+    .select("id");
+
+  if (deleteError) {
+    return jsonError(deleteError.message, 400);
+  }
+
+  if (!deletedRows?.length) {
+    return jsonError("Tipo de evento nao encontrado.", 404);
+  }
+
+  return Response.json({ mode: "physical" });
 }

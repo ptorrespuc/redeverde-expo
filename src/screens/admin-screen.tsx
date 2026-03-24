@@ -1,5 +1,6 @@
 import { Picker } from "@react-native-picker/picker";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ChangeEvent } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Toast from "react-native-toast-message";
 
@@ -11,6 +12,8 @@ import {
   createAdminSpecies,
   createAdminUser,
   deleteAdminPointClassification,
+  deleteAdminPointEventType,
+  deleteAdminSpecies,
   deleteAdminPointTag,
   loadAdminBootstrap,
   updateAdminGroup,
@@ -21,6 +24,7 @@ import {
   updateAdminUser,
 } from "@/src/lib/admin-web-api";
 import { useAppContext } from "@/src/providers/app-provider";
+import { GroupAvatar } from "@/src/components/groups/group-avatar";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
@@ -67,6 +71,9 @@ interface GroupFormState {
   isPublic: boolean;
   acceptsPointCollaboration: boolean;
   maxPendingPointsPerCollaborator: string;
+  logoFile: File | null;
+  logoPreviewUrl: string | null;
+  removeLogo: boolean;
 }
 
 interface EditableMembership {
@@ -128,6 +135,23 @@ const SECTION_SINGULAR_LABELS: Record<AdminSection, string> = {
   species: "especie",
 };
 
+const groupLogoFileInputStyle: CSSProperties = {
+  backgroundColor: colors.surface,
+  border: `1px solid ${colors.border}`,
+  borderRadius: 14,
+  color: colors.text,
+  fontSize: 14,
+  padding: `${spacing.sm}px ${spacing.md}px`,
+};
+
+const groupLogoImageStyle: CSSProperties = {
+  aspectRatio: "1 / 1",
+  borderRadius: 24,
+  height: 96,
+  objectFit: "cover",
+  width: 96,
+};
+
 function sortByLocale<T>(items: T[], selector: (item: T) => string) {
   return [...items].sort((a, b) => selector(a).localeCompare(selector(b), "pt-BR"));
 }
@@ -139,6 +163,9 @@ function buildDefaultGroupForm(): GroupFormState {
     isPublic: false,
     acceptsPointCollaboration: false,
     maxPendingPointsPerCollaborator: "5",
+    logoFile: null,
+    logoPreviewUrl: null,
+    removeLogo: false,
   };
 }
 
@@ -204,6 +231,9 @@ function buildGroupFormFromRecord(group: GroupRecord): GroupFormState {
     isPublic: group.is_public,
     acceptsPointCollaboration: group.accepts_point_collaboration,
     maxPendingPointsPerCollaborator: String(group.max_pending_points_per_collaborator ?? 5),
+    logoFile: null,
+    logoPreviewUrl: group.logo_url ?? null,
+    removeLogo: false,
   };
 }
 
@@ -302,6 +332,7 @@ export function AdminScreen() {
   const [tagForm, setTagForm] = useState<TagFormState>(buildDefaultTagForm());
   const [eventTypeForm, setEventTypeForm] = useState<EventTypeFormState>(buildDefaultEventTypeForm());
   const [speciesForm, setSpeciesForm] = useState<SpeciesFormState>(buildDefaultSpeciesForm);
+  const localGroupLogoPreviewRef = useRef<string | null>(null);
 
   const isWeb = Platform.OS === "web";
   const canAccessAdmin = Boolean(userContext?.is_super_admin || userContext?.has_group_admin);
@@ -425,6 +456,50 @@ export function AdminScreen() {
     }
   }, [activeSection, availableSections]);
 
+  useEffect(() => {
+    return () => {
+      if (isWeb && localGroupLogoPreviewRef.current && typeof URL !== "undefined") {
+        URL.revokeObjectURL(localGroupLogoPreviewRef.current);
+      }
+    };
+  }, [isWeb]);
+
+  const handleGroupLogoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextFile = event.target.files?.[0] ?? null;
+
+    if (!nextFile) {
+      return;
+    }
+
+    if (localGroupLogoPreviewRef.current && typeof URL !== "undefined") {
+      URL.revokeObjectURL(localGroupLogoPreviewRef.current);
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(nextFile);
+    localGroupLogoPreviewRef.current = nextPreviewUrl;
+    setGroupForm((current) => ({
+      ...current,
+      logoFile: nextFile,
+      logoPreviewUrl: nextPreviewUrl,
+      removeLogo: false,
+    }));
+    event.currentTarget.value = "";
+  };
+
+  const handleGroupLogoRemove = () => {
+    if (localGroupLogoPreviewRef.current && typeof URL !== "undefined") {
+      URL.revokeObjectURL(localGroupLogoPreviewRef.current);
+      localGroupLogoPreviewRef.current = null;
+    }
+
+    setGroupForm((current) => ({
+      ...current,
+      logoFile: null,
+      logoPreviewUrl: null,
+      removeLogo: true,
+    }));
+  };
+
   const openModal = (section: AdminSection, mode: ModalMode, id?: string) => {
     if (!bootstrap) {
       return;
@@ -506,6 +581,7 @@ export function AdminScreen() {
             isPublic: groupForm.isPublic,
             acceptsPointCollaboration: groupForm.acceptsPointCollaboration,
             maxPendingPointsPerCollaborator: Number(groupForm.maxPendingPointsPerCollaborator || 5),
+            logo: groupForm.logoFile ?? undefined,
           });
         } else if (modalState.id) {
           await updateAdminGroup(modalState.id, {
@@ -514,6 +590,8 @@ export function AdminScreen() {
             isPublic: groupForm.isPublic,
             acceptsPointCollaboration: groupForm.acceptsPointCollaboration,
             maxPendingPointsPerCollaborator: Number(groupForm.maxPendingPointsPerCollaborator || 5),
+            logo: groupForm.logoFile ?? undefined,
+            removeLogo: groupForm.removeLogo,
           });
         }
       }
@@ -641,6 +719,46 @@ export function AdminScreen() {
     }
   };
 
+  const confirmDeleteEventType = async (pointEventType: PointEventTypeRecord) => {
+    if (!globalThis.confirm?.(`Excluir o tipo de evento "${pointEventType.name}"?`)) {
+      return;
+    }
+
+    try {
+      await deleteAdminPointEventType(pointEventType.id);
+      await refreshAll();
+      Toast.show({
+        type: "success",
+        text1: "Tipo de evento removido",
+      });
+    } catch (error) {
+      Toast.show({
+        type: "error",
+        text1: error instanceof Error ? error.message : "Nao foi possivel excluir.",
+      });
+    }
+  };
+
+  const confirmDeleteSpecies = async (species: SpeciesRecord) => {
+    if (!globalThis.confirm?.(`Excluir a especie "${species.common_name}"?`)) {
+      return;
+    }
+
+    try {
+      await deleteAdminSpecies(species.id);
+      await refreshAll();
+      Toast.show({
+        type: "success",
+        text1: "Especie removida",
+      });
+    } catch (error) {
+      Toast.show({
+        type: "error",
+        text1: error instanceof Error ? error.message : "Nao foi possivel excluir.",
+      });
+    }
+  };
+
   if (!isReady) {
     return <LoadingView label="Preparando a administracao..." />;
   }
@@ -742,9 +860,12 @@ export function AdminScreen() {
             return (
               <Card key={group.id}>
                 <View style={styles.listRowHeader}>
-                  <View style={styles.listRowCopy}>
-                    <Text style={styles.listRowTitle}>{group.name}</Text>
-                    <Text style={styles.listRowSubtitle}>@{group.code}</Text>
+                  <View style={styles.listRowIdentity}>
+                    <GroupAvatar logoUrl={group.logo_url} name={group.name} size={40} />
+                    <View style={styles.listRowCopy}>
+                      <Text style={styles.listRowTitle}>{group.name}</Text>
+                      <Text style={styles.listRowSubtitle}>@{group.code}</Text>
+                    </View>
                   </View>
                   {canEdit ? (
                     <Button compact label="Editar" onPress={() => openModal("groups", "edit", group.id)} variant="ghost" />
@@ -758,6 +879,7 @@ export function AdminScreen() {
                     {group.accepts_point_collaboration ? "Aceita colaboracao" : "Sem colaboracao"}
                   </Badge>
                   {group.my_role ? <Badge>{USER_ROLE_LABELS[group.my_role]}</Badge> : null}
+                  {group.logo_url ? <Badge>Com logo</Badge> : null}
                 </View>
                 <Text style={styles.metaText}>
                   Limite de pendencias por colaborador: {group.max_pending_points_per_collaborator}
@@ -922,7 +1044,10 @@ export function AdminScreen() {
                   <Text style={styles.listRowTitle}>{pointEventType.name}</Text>
                   <Text style={styles.listRowSubtitle}>{pointEventType.point_classification_name}</Text>
                 </View>
-                <Button compact label="Editar" onPress={() => openModal("event-types", "edit", pointEventType.id)} variant="ghost" />
+                <View style={styles.inlineActions}>
+                  <Button compact label="Editar" onPress={() => openModal("event-types", "edit", pointEventType.id)} variant="ghost" />
+                  <Button compact label="Excluir" onPress={() => void confirmDeleteEventType(pointEventType)} variant="danger" />
+                </View>
               </View>
               <View style={styles.badgeWrap}>
                 <Badge>{pointEventType.slug}</Badge>
@@ -954,7 +1079,10 @@ export function AdminScreen() {
                   <Text style={styles.listRowTitle}>{species.common_name}</Text>
                   <Text style={styles.listRowSubtitle}>{species.scientific_name}</Text>
                 </View>
-                <Button compact label="Editar" onPress={() => openModal("species", "edit", species.id)} variant="ghost" />
+                <View style={styles.inlineActions}>
+                  <Button compact label="Editar" onPress={() => openModal("species", "edit", species.id)} variant="ghost" />
+                  <Button compact label="Excluir" onPress={() => void confirmDeleteSpecies(species)} variant="danger" />
+                </View>
               </View>
               <View style={styles.badgeWrap}>
                 <Badge tone={species.is_active ? "success" : "default"}>
@@ -999,6 +1127,34 @@ export function AdminScreen() {
                 </Field>
                 <FieldSwitch label="Grupo publico" value={groupForm.isPublic} onValueChange={(value) => setGroupForm((current) => ({ ...current, isPublic: value }))} />
                 <FieldSwitch label="Aceita colaboracao de pontos" value={groupForm.acceptsPointCollaboration} onValueChange={(value) => setGroupForm((current) => ({ ...current, acceptsPointCollaboration: value }))} />
+                <Field>
+                  <FieldLabel>Logo do grupo</FieldLabel>
+                  <input
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleGroupLogoChange}
+                    style={groupLogoFileInputStyle}
+                    type="file"
+                  />
+                  <FieldHint>Use PNG, JPG ou WEBP com no maximo 5 MB.</FieldHint>
+                  {groupForm.logoPreviewUrl ? (
+                    <View style={styles.groupLogoPreviewShell}>
+                      <img
+                        alt="Preview da logo do grupo"
+                        src={groupForm.logoPreviewUrl}
+                        style={groupLogoImageStyle}
+                      />
+                    </View>
+                  ) : (
+                    <View style={styles.groupLogoEmptyShell}>
+                      <Text style={styles.groupLogoEmptyLabel}>Nenhuma logo selecionada.</Text>
+                    </View>
+                  )}
+                  {groupForm.logoPreviewUrl ? (
+                    <View style={styles.groupLogoActions}>
+                      <Button compact label="Remover logo" onPress={handleGroupLogoRemove} variant="ghost" />
+                    </View>
+                  ) : null}
+                </Field>
               </>
             ) : null}
 
@@ -1262,6 +1418,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     justifyContent: "space-between",
   },
+  listRowIdentity: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
   listRowCopy: {
     flex: 1,
     gap: 2,
@@ -1289,6 +1451,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
+  },
+  groupLogoPreviewShell: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 124,
+    padding: spacing.md,
+  },
+  groupLogoEmptyShell: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 108,
+    padding: spacing.md,
+  },
+  groupLogoEmptyLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  groupLogoActions: {
+    alignItems: "flex-start",
   },
   pickerShell: {
     backgroundColor: colors.surface,
