@@ -1,6 +1,7 @@
 import { withPointGroupLogo } from "@/src/lib/group-logos";
 import { attachPointTagsToPoints } from "@/src/lib/point-tags";
 import { jsonError } from "@/src/server/http";
+import { applyPendingDisplayToPoints } from "@/src/server/pending-point-display";
 import { createRequestSupabaseClient, getAccessTokenFromRequest } from "@/src/server/supabase";
 import type { PointRecord } from "@/src/types/domain";
 
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
     (point) => point.status !== "archived",
   );
   const pointsWithTags = await attachPointTagsToPoints(supabase, visiblePoints);
+  const pointsWithPendingDisplay = await applyPendingDisplayToPoints(supabase, pointsWithTags);
 
-  return Response.json(pointsWithTags.map(withPointGroupLogo));
+  return Response.json(pointsWithPendingDisplay.map(withPointGroupLogo));
 }

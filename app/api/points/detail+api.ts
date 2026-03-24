@@ -1,6 +1,7 @@
 import { withPointGroupLogo } from "@/src/lib/group-logos";
 import { attachPointTagsToPoint } from "@/src/lib/point-tags";
 import { jsonError } from "@/src/server/http";
+import { applyPendingDisplayToPoint } from "@/src/server/pending-point-display";
 import { createRequestSupabaseClient } from "@/src/server/supabase";
 import type { PointDetailRecord } from "@/src/types/domain";
 
@@ -28,5 +29,6 @@ export async function GET(request: Request) {
   }
 
   const pointWithTags = await attachPointTagsToPoint(supabase, point);
-  return Response.json(withPointGroupLogo(pointWithTags));
+  const pointWithPendingDisplay = await applyPendingDisplayToPoint(supabase, pointWithTags);
+  return Response.json(withPointGroupLogo(pointWithPendingDisplay));
 }

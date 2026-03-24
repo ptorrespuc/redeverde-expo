@@ -2,6 +2,7 @@ import { Picker } from "@react-native-picker/picker";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Location from "expo-location";
 import Toast from "react-native-toast-message";
 
@@ -282,13 +283,16 @@ export function MapScreen() {
     [groupFilter],
   );
 
-  useEffect(() => {
-    if (!isReady) {
-      return;
-    }
+  useFocusEffect(
+    useCallback(() => {
+      if (!isReady) {
+        return undefined;
+      }
 
-    void refreshPoints();
-  }, [isReady, refreshPoints]);
+      void refreshPoints();
+      return undefined;
+    }, [isReady, refreshPoints]),
+  );
 
   const selectedGroup = visibleGroups.find((group) => group.id === groupFilter) ?? null;
   const isAllGroupsSelected = groupFilter === "all";

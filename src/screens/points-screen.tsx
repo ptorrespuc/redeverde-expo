@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
 
 import { GroupAvatar } from "@/src/components/groups/group-avatar";
@@ -104,13 +105,16 @@ export function PointsScreen() {
     }
   }, [classificationFilter, groupFilter, isAuthenticated, mineOnly, pendingOnly]);
 
-  useEffect(() => {
-    if (!isReady) {
-      return;
-    }
+  useFocusEffect(
+    useCallback(() => {
+      if (!isReady) {
+        return undefined;
+      }
 
-    void refreshPoints();
-  }, [isReady, refreshPoints]);
+      void refreshPoints();
+      return undefined;
+    }, [isReady, refreshPoints]),
+  );
 
   const selectedGroup = groupFilter === "all"
     ? null
