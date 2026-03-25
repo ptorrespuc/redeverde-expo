@@ -332,49 +332,33 @@ export async function listPointEventTypes(pointClassificationId?: string | null)
 }
 
 export async function createPoint(payload: CreatePointPayload) {
-  const { data, error } = await supabase.rpc("create_point", {
-    p_group_id: payload.groupId,
-    p_point_classification_id: payload.classificationId,
-    p_title: payload.title,
-    p_longitude: payload.longitude,
-    p_latitude: payload.latitude,
-    p_description: payload.description?.trim() || null,
-    p_status: null,
-    p_is_public: payload.isPublic,
-    p_species_id: payload.speciesId?.trim() || null,
+  return requestAppJson<PointRecord>("/api/points", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      groupId: payload.groupId,
+      classificationId: payload.classificationId,
+      tagIds: payload.tagIds ?? [],
+      title: payload.title,
+      speciesId: payload.speciesId?.trim() || null,
+      description: payload.description?.trim() || null,
+      isPublic: payload.isPublic,
+      longitude: payload.longitude,
+      latitude: payload.latitude,
+    }),
   });
-
-  const point = getSingleRow(
-    requireData(data, error) as PointRecord[] | null,
-    "O ponto nao foi criado.",
-  );
-
-  return withPointGroupLogo(point);
 }
 
 export async function updatePoint(pointId: string, payload: UpdatePointPayload) {
-  const speciesIdProvided = Object.prototype.hasOwnProperty.call(payload, "speciesId");
-  const groupIdProvided = Object.prototype.hasOwnProperty.call(payload, "groupId");
-  const { data, error } = await supabase.rpc("update_point", {
-    p_point_id: pointId,
-    p_group_id: groupIdProvided ? payload.groupId ?? null : null,
-    p_point_classification_id: payload.classificationId ?? null,
-    p_title: payload.title ?? null,
-    p_description: payload.description ?? null,
-    p_status: null,
-    p_longitude: payload.longitude ?? null,
-    p_latitude: payload.latitude ?? null,
-    p_is_public: typeof payload.isPublic === "boolean" ? payload.isPublic : null,
-    p_species_id: payload.speciesId ?? null,
-    p_species_id_provided: speciesIdProvided,
+  return requestAppJson<PointRecord>(`/api/points/detail?pointId=${encodeURIComponent(pointId)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   });
-
-  const point = getSingleRow(
-    requireData(data, error) as PointRecord[] | null,
-    "O ponto nao foi atualizado.",
-  );
-
-  return withPointGroupLogo(point);
 }
 
 export async function reviewPoint(pointId: string, action: "approve" | "reject") {
