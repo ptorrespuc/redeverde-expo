@@ -315,15 +315,7 @@ export async function getPoint(pointId: string) {
 }
 
 export async function listPointEvents(pointId: string) {
-  const { data, error } = await supabase.rpc("list_point_events", {
-    p_point_id: pointId,
-  });
-
-  const rows = requireData(data, error) as PointEventRecord[] | null;
-  return (rows ?? []).map((event) => ({
-    ...event,
-    media: event.media ?? [],
-  }));
+  return requestAppJson<PointEventRecord[]>(`/api/points/events?pointId=${encodeURIComponent(pointId)}`);
 }
 
 export async function listPointMedia(pointId: string) {
@@ -399,21 +391,49 @@ export async function reviewPoint(pointId: string, action: "approve" | "reject")
 }
 
 export async function createPointEvent(pointId: string, payload: CreatePointEventPayload) {
-  const { data, error } = await supabase.rpc("create_point_event", {
-    p_point_id: pointId,
-    p_point_event_type_id: payload.pointEventTypeId || null,
-    p_event_type: payload.eventType || null,
-    p_description: payload.description?.trim() || null,
-    p_event_date: payload.eventDate || null,
+  if (payload.photos?.length) {
+    const formData = new FormData();
+
+    if (payload.pointEventTypeId) {
+      formData.append("pointEventTypeId", payload.pointEventTypeId);
+    }
+
+    if (payload.eventType?.trim()) {
+      formData.append("eventType", payload.eventType.trim());
+    }
+
+    if (payload.description?.trim()) {
+      formData.append("description", payload.description.trim());
+    }
+
+    if (payload.eventDate?.trim()) {
+      formData.append("eventDate", payload.eventDate.trim());
+    }
+
+    for (const photo of payload.photos) {
+      formData.append("photos", photo.file);
+      formData.append("photoCaptions", photo.caption?.trim() || "");
+    }
+
+    return requestAppJson<PointEventRecord>(
+      `/api/points/events?pointId=${encodeURIComponent(pointId)}`,
+      {
+        method: "POST",
+        body: formData,
+      },
+    );
+  }
+
+  return requestAppJson<PointEventRecord>(`/api/points/events?pointId=${encodeURIComponent(pointId)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      pointEventTypeId: payload.pointEventTypeId || null,
+      eventType: payload.eventType || null,
+      description: payload.description?.trim() || null,
+      eventDate: payload.eventDate || null,
+    }),
   });
-
-  const event = getSingleRow(
-    requireData(data, error) as PointEventRecord[] | null,
-    "O evento nao foi criado.",
-  );
-
-  return {
-    ...event,
-    media: event.media ?? [],
-  };
 }

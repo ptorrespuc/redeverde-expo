@@ -7,6 +7,7 @@ import Toast from "react-native-toast-message";
 
 import { GroupAvatar } from "@/src/components/groups/group-avatar";
 import { EventFormModal } from "@/src/components/points/event-form-modal";
+import { PointTimelineList } from "@/src/components/points/point-timeline-list";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
@@ -265,22 +266,11 @@ export function PointDetailScreen() {
 
       <Card>
         <Text style={styles.sectionTitle}>Timeline</Text>
-        {events.length ? (
-          events.map((event) => (
-            <View key={event.id} style={styles.timelineItem}>
-              <Text style={styles.timelineType}>{event.event_type}</Text>
-              <Text style={styles.timelineMeta}>
-                {formatDateTime(event.event_date)} | {event.created_by_name}
-              </Text>
-              {event.description ? <Text style={styles.timelineDescription}>{event.description}</Text> : null}
-            </View>
-          ))
-        ) : (
-          <EmptyState
-            title="Sem eventos"
-            description="A timeline deste ponto ainda nao recebeu registros."
-          />
-        )}
+        <PointTimelineList
+          emptyDescription="A timeline deste ponto ainda nao recebeu registros."
+          emptyTitle="Sem eventos"
+          events={events}
+        />
       </Card>
 
       <EventFormModal
@@ -402,25 +392,5 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
-  },
-  timelineItem: {
-    borderLeftColor: colors.secondary,
-    borderLeftWidth: 3,
-    gap: 4,
-    paddingLeft: spacing.md,
-  },
-  timelineType: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  timelineMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  timelineDescription: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
   },
 });

@@ -6,6 +6,7 @@ import Toast from "react-native-toast-message";
 
 import { EventFormModal } from "@/src/components/points/event-form-modal";
 import { PointForm } from "@/src/components/points/point-form";
+import { PointTimelineList } from "@/src/components/points/point-timeline-list";
 import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
 import { EmptyState } from "@/src/components/ui/empty-state";
@@ -18,7 +19,6 @@ import {
   listPointEvents,
   updatePoint,
 } from "@/src/lib/api";
-import { formatDateTime } from "@/src/lib/format";
 import { useAppContext } from "@/src/providers/app-provider";
 import { colors, spacing } from "@/src/theme";
 import type {
@@ -219,26 +219,11 @@ export function EditPointScreen() {
             <Button compact label="Novo evento" onPress={() => setIsEventModalOpen(true)} variant="ghost" />
           </View>
 
-          {events.length ? (
-            <View style={styles.timelineList}>
-              {events.map((event) => (
-                <View key={event.id} style={styles.timelineItem}>
-                  <Text style={styles.timelineType}>{event.event_type}</Text>
-                  <Text style={styles.timelineMeta}>
-                    {formatDateTime(event.event_date)} | {event.created_by_name}
-                  </Text>
-                  {event.description ? (
-                    <Text style={styles.timelineDescription}>{event.description}</Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          ) : (
-            <EmptyState
-              title="Sem eventos registrados"
-              description="Use o botao acima para iniciar a timeline operacional deste ponto."
-            />
-          )}
+          <PointTimelineList
+            emptyDescription="Use o botao acima para iniciar a timeline operacional deste ponto."
+            emptyTitle="Sem eventos registrados"
+            events={events}
+          />
         </Card>
       ) : null}
 
@@ -293,28 +278,5 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
-  },
-  timelineList: {
-    gap: spacing.md,
-  },
-  timelineItem: {
-    borderLeftColor: colors.secondary,
-    borderLeftWidth: 3,
-    gap: 4,
-    paddingLeft: spacing.md,
-  },
-  timelineType: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  timelineMeta: {
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  timelineDescription: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
   },
 });
