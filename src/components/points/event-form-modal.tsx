@@ -304,7 +304,7 @@ async function convertAssetToSelectedPhoto(asset: ImagePicker.ImagePickerAsset):
   }
 
   return {
-    id: `${Date.now()}-${crypto.randomUUID()}`,
+    id: createClientSideId(),
     file,
     caption: "",
     previewUri: asset.uri,
@@ -318,4 +318,8 @@ async function createFileFromAssetUri(uri: string, fileName: string, mimeType: s
   return new File([normalizedBlob], fileName, {
     type: mimeType,
   });
+}
+
+function createClientSideId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
