@@ -9,6 +9,7 @@ import type {
   CreatePointEventPayload,
   CreatePointPayload,
   GroupRecord,
+  NativeUploadFile,
   PointClassificationRecord,
   PointDetailRecord,
   PointEventRecord,
@@ -411,7 +412,7 @@ export async function createPointEvent(pointId: string, payload: CreatePointEven
     }
 
     for (const photo of payload.photos) {
-      formData.append("photos", photo.file);
+      formData.append("photos", normalizePhotoFileForFormData(photo.file));
       formData.append("photoCaptions", photo.caption?.trim() || "");
     }
 
@@ -436,4 +437,20 @@ export async function createPointEvent(pointId: string, payload: CreatePointEven
       eventDate: payload.eventDate || null,
     }),
   });
+}
+
+function normalizePhotoFileForFormData(file: File | NativeUploadFile) {
+  if (isNativeUploadFile(file)) {
+    return {
+      uri: file.uri,
+      name: file.name,
+      type: file.type,
+    } as unknown as Blob;
+  }
+
+  return file;
+}
+
+function isNativeUploadFile(file: File | NativeUploadFile): file is NativeUploadFile {
+  return typeof file === "object" && file !== null && "uri" in file;
 }

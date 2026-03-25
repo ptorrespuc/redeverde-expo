@@ -15,6 +15,7 @@ import { ModalSheet } from "@/src/components/ui/modal-sheet";
 import { colors, spacing } from "@/src/theme";
 import type {
   CreatePointEventPayload,
+  NativeUploadFile,
   PointEventPhotoInput,
   PointEventTypeRecord,
 } from "@/src/types/domain";
@@ -293,15 +294,18 @@ const styles = StyleSheet.create({
 
 async function convertAssetToSelectedPhoto(asset: ImagePicker.ImagePickerAsset): Promise<SelectedEventPhoto> {
   const fileName = asset.fileName?.trim() || `evento-${Date.now()}.jpg`;
+  const mimeType = asset.mimeType || "image/jpeg";
   const assetWithFile = asset as ImagePicker.ImagePickerAsset & { file?: File | null };
+  const size = await resolveAssetSize(asset, assetWithFile.file);
+
+  if (size > MAX_EVENT_PHOTO_SIZE) {
+    throw new Error("Cada foto do evento pode ter no maximo 10 MB.");
+  }
+
   const file =
     assetWithFile.file instanceof File
       ? assetWithFile.file
-      : await createFileFromAssetUri(asset.uri, fileName, asset.mimeType || "image/jpeg");
-
-  if (file.size > MAX_EVENT_PHOTO_SIZE) {
-    throw new Error("Cada foto do evento pode ter no maximo 10 MB.");
-  }
+      : createNativeUploadFile(asset.uri, fileName, mimeType);
 
   return {
     id: createClientSideId(),
@@ -311,13 +315,31 @@ async function convertAssetToSelectedPhoto(asset: ImagePicker.ImagePickerAsset):
   };
 }
 
-async function createFileFromAssetUri(uri: string, fileName: string, mimeType: string) {
+function createNativeUploadFile(uri: string, fileName: string, mimeType: string): NativeUploadFile {
+  return {
+    uri,
+    name: fileName,
+    type: mimeType,
+  };
+}
+
+async function resolveAssetSize(asset: ImagePicker.ImagePickerAsset, file?: File | null) {
+  if (typeof asset.fileSize === "number" && asset.fileSize > 0) {
+    return asset.fileSize;
+  }
+
+  if (file instanceof File) {
+    return file.size;
+  }
+
+  return resolveFileSizeFromUri(asset.uri, asset.mimeType || "image/jpeg");
+}
+
+async function resolveFileSizeFromUri(uri: string, mimeType: string) {
   const response = await fetch(uri);
   const blob = await response.blob();
   const normalizedBlob = blob.type === mimeType ? blob : blob.slice(0, blob.size, mimeType);
-  return new File([normalizedBlob], fileName, {
-    type: mimeType,
-  });
+  return normalizedBlob.size;
 }
 
 function createClientSideId() {

@@ -142,8 +142,14 @@ export interface PendingPointReviewSummary {
   pendingMediaMode: PendingReviewMediaMode;
 }
 
+export interface NativeUploadFile {
+  uri: string;
+  name: string;
+  type: string;
+}
+
 export interface PointPhotoInput {
-  file: File;
+  file: File | NativeUploadFile;
   caption?: string;
 }
 
