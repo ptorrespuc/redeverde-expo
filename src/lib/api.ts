@@ -332,6 +332,39 @@ export async function listPointEventTypes(pointClassificationId?: string | null)
 }
 
 export async function createPoint(payload: CreatePointPayload) {
+  if (payload.photos?.length) {
+    const formData = new FormData();
+
+    formData.append("groupId", payload.groupId);
+    formData.append("classificationId", payload.classificationId);
+    formData.append("title", payload.title);
+    formData.append("isPublic", payload.isPublic ? "true" : "false");
+    formData.append("longitude", String(payload.longitude));
+    formData.append("latitude", String(payload.latitude));
+
+    if (payload.description?.trim()) {
+      formData.append("description", payload.description.trim());
+    }
+
+    if (payload.speciesId?.trim()) {
+      formData.append("speciesId", payload.speciesId.trim());
+    }
+
+    for (const tagId of payload.tagIds ?? []) {
+      formData.append("tagIds", tagId);
+    }
+
+    for (const photo of payload.photos) {
+      formData.append("photos", normalizePhotoFileForFormData(photo.file));
+      formData.append("photoCaptions", photo.caption?.trim() || "");
+    }
+
+    return requestAppJson<PointRecord>("/api/points", {
+      method: "POST",
+      body: formData,
+    });
+  }
+
   return requestAppJson<PointRecord>("/api/points", {
     method: "POST",
     headers: {

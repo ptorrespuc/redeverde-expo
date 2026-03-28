@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
+import * as ImagePicker from "expo-image-picker";
 
 import { listPointTags } from "@/src/lib/api";
 import { PointCoordinatePickerModal } from "@/src/components/points/point-coordinate-picker-modal";
@@ -17,10 +18,20 @@ import { colors, spacing } from "@/src/theme";
 import type {
   CreatePointPayload,
   GroupRecord,
+  NativeUploadFile,
   PointClassificationRecord,
+  PointPhotoInput,
   PointTagRecord,
   SpeciesRecord,
 } from "@/src/types/domain";
+
+const MAX_POINT_PHOTOS = 3;
+const MAX_POINT_PHOTO_SIZE = 10 * 1024 * 1024;
+
+interface SelectedPointPhoto extends PointPhotoInput {
+  id: string;
+  previewUri: string;
+}
 
 interface PointFormProps {
   groups: GroupRecord[];
@@ -87,6 +98,7 @@ export function PointForm({
   const [isLoadingTags, setIsLoadingTags] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedPhotos, setSelectedPhotos] = useState<SelectedPointPhoto[]>([]);
   const [showCoordinateEditor, setShowCoordinateEditor] = useState(
     !Boolean(initialValues?.longitude != null && initialValues?.latitude != null),
   );
@@ -99,6 +111,7 @@ export function PointForm({
     setSpeciesSearch(nextSpecies?.display_name ?? "");
     setShowCoordinateEditor(!(nextState.longitude && nextState.latitude));
     setShowCoordinatePicker(false);
+    setSelectedPhotos([]);
   }, [classifications, groups, initialValues, speciesCatalog]);
 
   useEffect(() => {
@@ -243,6 +256,59 @@ export function PointForm({
     setShowCoordinatePicker(false);
   }
 
+  async function handlePhotoSelection() {
+    setErrorMessage(null);
+
+    if (Platform.OS !== "web") {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        setErrorMessage("Permita o acesso a fotos para anexar imagens ao ponto.");
+        return;
+      }
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: false,
+      allowsMultipleSelection: true,
+      mediaTypes: ["images"],
+      quality: 0.85,
+      selectionLimit: MAX_POINT_PHOTOS,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    try {
+      const pickedPhotos = await Promise.all(result.assets.map(convertAssetToSelectedPhoto));
+
+      setSelectedPhotos((current) => {
+        const nextPhotos = [...current, ...pickedPhotos];
+
+        if (nextPhotos.length > MAX_POINT_PHOTOS) {
+          throw new Error(`Adicione no maximo ${MAX_POINT_PHOTOS} fotos por ponto.`);
+        }
+
+        return nextPhotos;
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Nao foi possivel preparar as fotos do ponto.",
+      );
+    }
+  }
+
+  function removePhoto(photoId: string) {
+    setSelectedPhotos((current) => current.filter((photo) => photo.id !== photoId));
+  }
+
+  function updatePhotoCaption(photoId: string, caption: string) {
+    setSelectedPhotos((current) =>
+      current.map((photo) => (photo.id === photoId ? { ...photo, caption } : photo)),
+    );
+  }
+
   async function handleSubmit() {
     setErrorMessage(null);
 
@@ -277,6 +343,12 @@ export function PointForm({
           : pointCanBePublic,
         longitude,
         latitude,
+        photos: selectedPhotos.length
+          ? selectedPhotos.map(({ file, caption }) => ({
+              file,
+              caption: caption?.trim() || undefined,
+            }))
+          : undefined,
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Nao foi possivel salvar o ponto.");
@@ -427,6 +499,37 @@ export function PointForm({
           value={formState.description}
         />
       </Field>
+
+      {!isEditing ? (
+        <Field>
+          <FieldLabel>Fotos iniciais</FieldLabel>
+          <Button compact label="Adicionar fotos" onPress={() => void handlePhotoSelection()} variant="ghost" />
+          <FieldHint>
+            Ate {MAX_POINT_PHOTOS} imagens por ponto, com no maximo 10 MB cada.
+          </FieldHint>
+
+          {selectedPhotos.length ? (
+            <View style={styles.photoList}>
+              {selectedPhotos.map((photo) => (
+                <View key={photo.id} style={styles.photoCard}>
+                  <Image resizeMode="cover" source={{ uri: photo.previewUri }} style={styles.photoPreview} />
+                  <Field>
+                    <FieldLabel>Legenda</FieldLabel>
+                    <FieldInput
+                      onChangeText={(value) => updatePhotoCaption(photo.id, value)}
+                      placeholder="Ex.: estado inicial do ponto"
+                      value={photo.caption ?? ""}
+                    />
+                  </Field>
+                  <Pressable onPress={() => removePhoto(photo.id)} style={styles.removePhotoButton}>
+                    <Text style={styles.removePhotoText}>Remover foto</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </Field>
+      ) : null}
 
       {canConfigureVisibility ? (
         <FieldSwitch
@@ -612,6 +715,31 @@ const styles = StyleSheet.create({
   tagChipLabelSelected: {
     color: "#ffffff",
   },
+  photoList: {
+    gap: spacing.md,
+  },
+  photoCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  photoPreview: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    height: 180,
+    width: "100%",
+  },
+  removePhotoButton: {
+    alignSelf: "flex-start",
+  },
+  removePhotoText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: "600",
+  },
   coordinateRow: {
     gap: spacing.md,
   },
@@ -662,3 +790,59 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 });
+
+async function convertAssetToSelectedPhoto(
+  asset: ImagePicker.ImagePickerAsset,
+): Promise<SelectedPointPhoto> {
+  const fileName = asset.fileName?.trim() || `ponto-${Date.now()}.jpg`;
+  const mimeType = asset.mimeType || "image/jpeg";
+  const assetWithFile = asset as ImagePicker.ImagePickerAsset & { file?: File | null };
+  const size = await resolveAssetSize(asset, assetWithFile.file);
+
+  if (size > MAX_POINT_PHOTO_SIZE) {
+    throw new Error("Cada foto do ponto pode ter no maximo 10 MB.");
+  }
+
+  const file =
+    assetWithFile.file instanceof File
+      ? assetWithFile.file
+      : createNativeUploadFile(asset.uri, fileName, mimeType);
+
+  return {
+    id: createClientSideId(),
+    file,
+    caption: "",
+    previewUri: asset.uri,
+  };
+}
+
+function createNativeUploadFile(uri: string, fileName: string, mimeType: string): NativeUploadFile {
+  return {
+    uri,
+    name: fileName,
+    type: mimeType,
+  };
+}
+
+async function resolveAssetSize(asset: ImagePicker.ImagePickerAsset, file?: File | null) {
+  if (typeof asset.fileSize === "number" && asset.fileSize > 0) {
+    return asset.fileSize;
+  }
+
+  if (file instanceof File) {
+    return file.size;
+  }
+
+  return resolveFileSizeFromUri(asset.uri, asset.mimeType || "image/jpeg");
+}
+
+async function resolveFileSizeFromUri(uri: string, mimeType: string) {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  const normalizedBlob = blob.type === mimeType ? blob : blob.slice(0, blob.size, mimeType);
+  return normalizedBlob.size;
+}
+
+function createClientSideId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
