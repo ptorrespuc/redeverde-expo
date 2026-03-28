@@ -299,6 +299,56 @@ export function PointForm({
     }
   }
 
+  async function handleCameraCapture() {
+    setErrorMessage(null);
+
+    if (selectedPhotos.length >= MAX_POINT_PHOTOS) {
+      setErrorMessage(`Adicione no maximo ${MAX_POINT_PHOTOS} fotos por ponto.`);
+      return;
+    }
+
+    if (Platform.OS === "web") {
+      setErrorMessage("Use 'Escolher fotos' no navegador.");
+      return;
+    }
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      setErrorMessage("Permita o acesso a camera para tirar fotos do ponto.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      cameraType: ImagePicker.CameraType.back,
+      mediaTypes: ["images"],
+      quality: 0.85,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    try {
+      const pickedPhotos = await Promise.all(result.assets.map(convertAssetToSelectedPhoto));
+
+      setSelectedPhotos((current) => {
+        const nextPhotos = [...current, ...pickedPhotos];
+
+        if (nextPhotos.length > MAX_POINT_PHOTOS) {
+          throw new Error(`Adicione no maximo ${MAX_POINT_PHOTOS} fotos por ponto.`);
+        }
+
+        return nextPhotos;
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Nao foi possivel preparar a foto do ponto.",
+      );
+    }
+  }
+
   function removePhoto(photoId: string) {
     setSelectedPhotos((current) => current.filter((photo) => photo.id !== photoId));
   }
@@ -503,7 +553,12 @@ export function PointForm({
       {!isEditing ? (
         <Field>
           <FieldLabel>Fotos iniciais</FieldLabel>
-          <Button compact label="Adicionar fotos" onPress={() => void handlePhotoSelection()} variant="ghost" />
+          <View style={styles.photoActions}>
+            {Platform.OS !== "web" ? (
+              <Button compact label="Tirar foto" onPress={() => void handleCameraCapture()} variant="ghost" />
+            ) : null}
+            <Button compact label="Escolher fotos" onPress={() => void handlePhotoSelection()} variant="ghost" />
+          </View>
           <FieldHint>
             Ate {MAX_POINT_PHOTOS} imagens por ponto, com no maximo 10 MB cada.
           </FieldHint>
@@ -717,6 +772,11 @@ const styles = StyleSheet.create({
   },
   photoList: {
     gap: spacing.md,
+  },
+  photoActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
   },
   photoCard: {
     backgroundColor: colors.surfaceSoft,
