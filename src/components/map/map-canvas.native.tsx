@@ -1,8 +1,9 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import MapView, { Marker, type Region } from "react-native-maps";
 
 import { getPointDisplayColor } from "@/src/lib/point-display";
 
+import { buildDisplayPointMarkers } from "./marker-layout";
 import type { MapCanvasHandle, MapCanvasProps, MapRegion } from "./map-canvas.types";
 
 function hasMeaningfulRegionChange(current: MapRegion | null, next: MapRegion) {
@@ -24,6 +25,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 ) {
   const mapRef = useRef<MapView | null>(null);
   const lastAppliedRegionRef = useRef<MapRegion | null>(region);
+  const displayMarkers = useMemo(() => buildDisplayPointMarkers(points), [points]);
 
   useImperativeHandle(ref, () => ({
     animateToRegion(nextRegion: MapRegion, duration = 450) {
@@ -60,9 +62,9 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       ref={mapRef}
       style={{ flex: 1 }}
     >
-      {points.map((point) => (
+      {displayMarkers.map(({ point, latitude, longitude }) => (
         <Marker
-          coordinate={{ latitude: point.latitude, longitude: point.longitude }}
+          coordinate={{ latitude, longitude }}
           key={point.id}
           onPress={() => onSelectPoint?.(point)}
           pinColor={getPointDisplayColor(point)}

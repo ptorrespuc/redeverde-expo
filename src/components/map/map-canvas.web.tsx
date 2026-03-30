@@ -1,9 +1,10 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { loadGoogleMapsLibraries } from "@/src/lib/google-maps";
 import { getPointDisplayColor } from "@/src/lib/point-display";
 import type { PointRecord } from "@/src/types/domain";
 
+import { buildDisplayPointMarkers } from "./marker-layout";
 import type { MapCanvasHandle, MapCanvasProps, MapRegion } from "./map-canvas.types";
 
 function deltaToZoom(latitudeDelta: number) {
@@ -38,6 +39,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   const onLongPressRef = useRef(onLongPress);
   const onRegionChangeCompleteRef = useRef(onRegionChangeComplete);
   const [mapError, setMapError] = useState<string | null>(null);
+  const displayMarkers = useMemo(() => buildDisplayPointMarkers(points), [points]);
 
   useEffect(() => {
     onLongPressRef.current = onLongPress;
@@ -167,10 +169,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     markersRef.current.forEach(({ marker }) => marker.setMap(null));
     markersRef.current = [];
 
-    points.forEach((point) => {
+    displayMarkers.forEach(({ point, latitude, longitude }) => {
       const marker = new google.maps.Marker({
         map,
-        position: { lat: point.latitude, lng: point.longitude },
+        position: { lat: latitude, lng: longitude },
         title: point.title,
         icon: buildMarkerIcon(point, selectedPointId === point.id),
         zIndex: selectedPointId === point.id ? 1000 : 10,
@@ -182,7 +184,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 
       markersRef.current.push({ pointId: point.id, marker });
     });
-  }, [onSelectPoint, points, selectedPointId]);
+  }, [displayMarkers, onSelectPoint, selectedPointId]);
 
   return (
     <>
