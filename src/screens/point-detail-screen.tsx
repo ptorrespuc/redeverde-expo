@@ -7,6 +7,10 @@ import Toast from "react-native-toast-message";
 
 import { GroupAvatar } from "@/src/components/groups/group-avatar";
 import { EventFormModal } from "@/src/components/points/event-form-modal";
+import {
+  getLatestPointEvent,
+  LatestPointEventCard,
+} from "@/src/components/points/latest-point-event-card";
 import { PointTimelineList } from "@/src/components/points/point-timeline-list";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
@@ -146,6 +150,7 @@ export function PointDetailScreen() {
   }
 
   const canReview = point.viewer_can_approve && (point.approval_status === "pending" || point.has_pending_update);
+  const latestEvent = getLatestPointEvent(events);
 
   return (
     <Screen>
@@ -221,6 +226,8 @@ export function PointDetailScreen() {
           ) : null}
         </View>
       </Card>
+
+      {latestEvent ? <LatestPointEventCard event={latestEvent} /> : null}
 
       {pointMedia.length ? (
         <Card>

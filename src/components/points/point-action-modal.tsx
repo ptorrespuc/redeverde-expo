@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 import { GroupAvatar } from "@/src/components/groups/group-avatar";
+import {
+  getLatestPointEvent,
+  LatestPointEventCard,
+} from "@/src/components/points/latest-point-event-card";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { ModalSheet } from "@/src/components/ui/modal-sheet";
-import { listPointMedia } from "@/src/lib/api";
+import { listPointEvents, listPointMedia } from "@/src/lib/api";
 import { getPointDisplayStatusLabel, isPointPendingForReview } from "@/src/lib/point-display";
 import { colors, spacing } from "@/src/theme";
-import type { PointMediaRecord, PointRecord } from "@/src/types/domain";
+import type { PointEventRecord, PointMediaRecord, PointRecord } from "@/src/types/domain";
 
 interface PointActionModalProps {
   point: PointRecord | null;
@@ -30,30 +34,37 @@ export function PointActionModal({
   onReject,
 }: PointActionModalProps) {
   const [pointMedia, setPointMedia] = useState<PointMediaRecord[]>([]);
+  const [events, setEvents] = useState<PointEventRecord[]>([]);
 
   useEffect(() => {
     let ignore = false;
 
-    async function loadMedia() {
+    async function loadPointAssets() {
       if (!point?.id || !open) {
         return;
       }
 
       try {
-        const media = await listPointMedia(point.id);
+        const [media, pointEvents] = await Promise.all([
+          listPointMedia(point.id),
+          listPointEvents(point.id),
+        ]);
 
         if (!ignore) {
           setPointMedia(media);
+          setEvents(pointEvents);
         }
       } catch {
         if (!ignore) {
           setPointMedia([]);
+          setEvents([]);
         }
       }
     }
 
     setPointMedia([]);
-    void loadMedia();
+    setEvents([]);
+    void loadPointAssets();
 
     return () => {
       ignore = true;
@@ -66,6 +77,7 @@ export function PointActionModal({
 
   const canReview = point.viewer_can_approve && isPointPendingForReview(point);
   const firstPointPhoto = pointMedia[0] ?? null;
+  const latestEvent = getLatestPointEvent(events);
 
   return (
     <ModalSheet onClose={onClose} open={open} title="Ponto selecionado">
@@ -97,6 +109,8 @@ export function PointActionModal({
       </View>
 
       {point.description ? <Text style={styles.description}>{point.description}</Text> : null}
+
+      {latestEvent ? <LatestPointEventCard event={latestEvent} /> : null}
 
       {firstPointPhoto?.signed_url ? (
         <View style={styles.photoBlock}>
