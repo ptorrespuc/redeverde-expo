@@ -68,7 +68,7 @@ export function AccountScreen() {
                 ) : (
                   <Badge>Publico</Badge>
                 )}
-                {group.viewer_can_manage ? (
+                {(group.viewer_can_manage || group.my_role === "super_admin" || group.my_role === "group_admin") ? (
                   <Button
                     compact
                     label="Gerenciar"
