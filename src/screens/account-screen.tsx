@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 
 import { LoginPanel } from "@/src/components/auth/login-panel";
+import { GroupEditModal } from "@/src/components/groups/group-edit-modal";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
@@ -11,11 +13,13 @@ import { LoadingView } from "@/src/components/ui/loading-view";
 import { Screen } from "@/src/components/ui/screen";
 import { useAppContext } from "@/src/providers/app-provider";
 import { colors, spacing } from "@/src/theme";
+import type { GroupRecord } from "@/src/types/domain";
 import { USER_ROLE_LABELS } from "@/src/types/domain";
 
 export function AccountScreen() {
   const router = useRouter();
   const { isAuthenticated, isReady, refreshBootstrap, signOut, userContext } = useAppContext();
+  const [editingGroup, setEditingGroup] = useState<GroupRecord | null>(null);
 
   if (!isReady) {
     return <LoadingView label="Preparando a conta..." />;
@@ -58,7 +62,21 @@ export function AccountScreen() {
                   @{group.code} | {group.is_public ? "publico" : "privado"}
                 </Text>
               </View>
-              {group.my_role ? <Badge>{USER_ROLE_LABELS[group.my_role]}</Badge> : <Badge>Publico</Badge>}
+              <View style={styles.groupActions}>
+                {group.my_role ? (
+                  <Badge>{USER_ROLE_LABELS[group.my_role]}</Badge>
+                ) : (
+                  <Badge>Publico</Badge>
+                )}
+                {group.viewer_can_manage ? (
+                  <Button
+                    compact
+                    label="Gerenciar"
+                    onPress={() => setEditingGroup(group)}
+                    variant="ghost"
+                  />
+                ) : null}
+              </View>
             </View>
           ))
         ) : (
@@ -68,6 +86,14 @@ export function AccountScreen() {
           />
         )}
       </Card>
+
+      <GroupEditModal
+        group={editingGroup}
+        onClose={() => setEditingGroup(null)}
+        onSuccess={() => {
+          void refreshBootstrap();
+        }}
+      />
 
       <Card>
         <Text style={styles.sectionTitle}>Acoes</Text>
@@ -149,6 +175,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.md,
     justifyContent: "space-between",
+  },
+  groupActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexShrink: 0,
+    gap: spacing.xs,
   },
   groupCopy: {
     flex: 1,
