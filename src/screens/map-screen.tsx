@@ -42,8 +42,8 @@ function createFocusedRegion(latitude: number, longitude: number): MapRegion {
   return {
     latitude,
     longitude,
-    latitudeDelta: 0.004,
-    longitudeDelta: 0.004,
+    latitudeDelta: 0.001,
+    longitudeDelta: 0.001,
   };
 }
 

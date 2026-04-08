@@ -61,6 +61,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 
   useEffect(() => {
     let disposed = false;
+    let resizeObserver: ResizeObserver | null = null;
 
     async function initialize() {
       try {
@@ -117,6 +118,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
             longitude: Number(event.latLng.lng().toFixed(6)),
           });
         });
+
+        // Notifica o Google Maps quando o container muda de tamanho (ex: zoom do browser).
+        // Sem isso, panTo/setZoom ficam desincronizados após Ctrl+/- ou pinch zoom.
+        resizeObserver = new ResizeObserver(() => {
+          if (mapRef.current) {
+            google.maps.event.trigger(mapRef.current, "resize");
+          }
+        });
+        resizeObserver.observe(containerRef.current);
       } catch (error) {
         if (!disposed) {
           setMapError(
@@ -130,6 +140,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
 
     return () => {
       disposed = true;
+      resizeObserver?.disconnect();
       markersRef.current.forEach(({ marker }) => marker.setMap(null));
       markersRef.current = [];
       mapRef.current = null;
