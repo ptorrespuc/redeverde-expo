@@ -129,7 +129,7 @@ export function LoginPanel({
     mode === "signin"
       ? description
       : mode === "signup"
-        ? "Crie sua conta e depois escolha os grupos em que vai colaborar."
+        ? "Crie sua conta e depois crie ou participe de grupos de monitoramento."
         : "Informe o email para receber o link de redefinicao da senha.";
 
   return (

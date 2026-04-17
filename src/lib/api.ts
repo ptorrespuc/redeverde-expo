@@ -174,6 +174,26 @@ export async function listGroups() {
   return (rows ?? []).map(withGroupLogo);
 }
 
+
+export async function createGroup(payload: {
+  name: string;
+  code: string;
+  isPublic: boolean;
+}): Promise<GroupRecord> {
+  return requestAppJson<GroupRecord>("/api/groups", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function joinGroup(groupId: string): Promise<void> {
+  await requestAppJson<{ ok: boolean }>("/api/groups/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ groupId }),
+  });
+}
 export async function listPointClassifications(options?: { onlyActive?: boolean }) {
   const { data, error } = await supabase.rpc("list_point_classifications", {
     p_only_active: options?.onlyActive ?? true,
