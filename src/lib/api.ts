@@ -114,6 +114,10 @@ export async function signInWithPassword(email: string, password: string) {
     throw new Error(error.message);
   }
 
+  if (!data.session) {
+    throw new Error("Sessao nao iniciada. Verifique se o e-mail foi confirmado.");
+  }
+
   return data.session;
 }
 
@@ -236,7 +240,7 @@ export async function getUserContext(session: Session | null): Promise<UserConte
       .from("users")
       .select("id, auth_user_id, name, email, preferred_group_id, created_at")
       .eq("auth_user_id", session.user.id)
-      .single(),
+      .maybeSingle(),
     listGroups(),
   ]);
 
@@ -488,6 +492,4 @@ function normalizePhotoFileForFormData(file: File | NativeUploadFile) {
   return file;
 }
 
-function isNativeUploadFile(file: File | NativeUploadFile): file is NativeUploadFile {
-  return typeof file === "object" && file !== null && "uri" in file;
-}
+function isNativeUploadFile(file: File | N
